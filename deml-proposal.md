@@ -18,7 +18,7 @@ The second half of this document is in English.
 1990年前後はパソコン雑誌のページ数が急増し、私が編集長になる頃には広告を除く本文だけで250ページ超、ピーク時には広告込みで700ページ超の号もありました。
 
 この規模になると、手書きやエクセルだけで台割を維持・更新するのは非常に大きな負担になります。  
-しかもパソコン雑誌はニュース対応で差し替えを行いたくなることがままあります。そこで生まれたのが「おーと台割らぁ」でした。今回の AutoDaiwarer でも、その愛称を継承したいと考えています。
+しかもパソコン雑誌はニュース対応で差し替えを行いたくなることがままあります。さらに細かいことをいうと編集部の進行管理の担当者はどの台から印刷所に入れていくかを考えます（下版といいます）。それによって複数の記事を担当している編集者やデザイナーにどの記事を優先せよと指示を出すことをしていました。印刷所から少しでも早くまとまった台のデータが欲しいと言ってくるからです。ほぼ戦場です。台割の管理が時間との戦いである編集部において生命線だったといっても大げさではなかったのです。そこで生まれたのが「おーと台割らぁ」でした。今回の AutoDaiwarer でも、その愛称を継承したいと考えています。
 
 ## DEML（台割記述言語）の提案
 
@@ -135,7 +135,9 @@ The original goal was practical: to represent the board format commonly used in 
 Around 1990, PC magazines rapidly increased in size. By the time I became editor-in-chief, non-ad pages alone exceeded 250 pages, and at peak issues total pages (including ads) exceeded 700.
 
 At that scale, manual management by handwriting or spreadsheets becomes expensive and fragile.  
-PC magazines also often needed late replacements due to fast-moving news. That pressure gave birth to “Auto Daiwarer,” and I would like to keep that nickname in AutoDaiwarer as well.
+PC magazines also often needed late replacements due to fast-moving news. More practically, the production editor had to decide which signatures should be sent to the printer first. In Japanese magazine production this is called *gehan* (sending pages/signatures to plate or print). That decision also determined which article should be prioritized when an editor or designer was responsible for several articles at once, because printers wanted complete signature data as early as possible.
+
+It was almost a battlefield. In an editorial department where flatplan management was a race against time, the flatplan was no exaggeration a lifeline. That pressure gave birth to “Auto Daiwarer,” and I would like to keep that nickname in AutoDaiwarer as well.
 
 ## Proposal: DEML (Daiwari Editorial Markup/Language)
 
@@ -176,6 +178,59 @@ Note: when this document mentions “five special lines,” it refers to these f
 - Non-reserved keywords are generally tolerated and may be ignored in current runtime behavior.
 - Example: `//頒布イベント` is metadata aimed at doujin publishing operations and currently has only display-support meaning.
 - For this area as well, I hope future AI-assisted workflows will interpret and use such metadata contextually.
+
+## Sample With Section Lines
+
+```text
+//filename	sample_daiwari
+//title	Sample Book
+//version	0.1
+//writer	Yamada
+//planned	2026/06/01
+//submission-date	2026/05/04	2 days left
+//circulation	First 500	Order on time
+//distribution-event	Bunfree 42	2026/05/04	Only bring items that sell
+//print-shop	Dainippon Printing
+//体裁
+	//opening	left
+	//pages	16*2+6
+	//start-page	1
+//台構成
+	//*	Start board	Color	Pages per board
+	//board	1	1C	16
+	//board	3	4C	8
+	//board	4	1C	16
+	//*
+//目次計画
+	//article-fields	Pages	Article	Desk	Deadline	Memo
+	//large	1	Frontispiece	Yamada	2026/05/01
+	//large	3	Contents	Yamada	2026/05/01
+	//large	4	Feature A	Sato
+		//middle	4	Introduction	Sato
+			//small	2	Spread 1	Sato	2026/05/01	Sample memo
+			//small	2	Spread 2	Otsuka	2026/05/02	Click a row to add a comment
+	//large	6	Experiment Corner	Yamada
+		//middle	2	Tryout	Yamada	2026/05/03	First draft received
+	//*
+	//hold	2	Replacement Candidate	Yamada	2026/05/21	Article not yet assigned to the flatplan.
+	//hold	4	Additional Article	Sato	2026/05/30	Another article not yet assigned to the flatplan.
+	//*
+	//insert	2	4	Foldout Map	Tanaka	2026/05/20	Before ordering
+	//*
+//表紙まわり
+	//hyoshi	Yamada	2026/05/22	Memo
+	//cover	Sato	2026/05/23	Check cover copy
+	//obi	Sato	2026/05/22	Check obi copy
+	//appendix	Otsuka	2026/05/24	Check appendix page
+//*
+//*	Column widths for article metadata in the article list. Editing widths on the article list page reflects this automatically.
+//article-list-widths	9	9	9	20	10.33	10.33	10.33	10.33	10.33	10.33
+//*	Fields after Article can be customized, for example: //article-fields	Pages	Article	Content
+//*
+//changelog	2026/05/02 15:41:20	Endo	Updated sample data.
+//*
+//*	This data is for AutoDaiwarer.
+```
 
 ---
 
