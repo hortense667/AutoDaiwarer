@@ -1,60 +1,69 @@
 //filename	book_howto_autodaiwarer_en
 //title	One Tool for Layout: How to Use AutoDaiwarer
-//opening	left
-//pages	16*6+8
 //planned	2026/12/20
 //version	0.9
 //writer	EditorialTeam
-//start-page	1
-//board	1	1C 16
-//board	3	4C 16
-//board	5	1C 16
-//large	1	Frontispiece	EditorialTeam	Sano	Takahashi
-//large	3	Contents and How to Read	EditorialTeam	Sano	Takahashi
-//large	10	Chapter1 What Is AutoDaiwarer	EditorialTeam	Sano	Takahashi
-	//middle	4	What You Can Do	EditorialTeam	Sano	Takahashi
-		//small	2	Overview of Board View	EditorialTeam	Sano	Takahashi	2026/10/10	Draft
-		//small	2	Article List and CSV Roles	EditorialTeam	Sano	Takahashi	2026/10/11	Draft
-	//middle	6	Basic Workflow	EditorialTeam	Sano	Takahashi
-		//small	3	From New Input to Save	EditorialTeam	Sano	Takahashi	2026/10/12	Draft
-		//small	3	From Load to Re-Edit	EditorialTeam	Sano	Takahashi	2026/10/13	Draft
-//large	18	Chapter2 First Input Practice	EditorialTeam	Sano	Takahashi
-	//middle	6	How to Write Meta Fields	EditorialTeam	Sano	Takahashi
-		//small	2	Filename and Title	EditorialTeam	Sano	Takahashi	2026/10/15	Draft
-		//small	2	Opening and Total Pages	EditorialTeam	Sano	Takahashi	2026/10/16	Draft
-		//small	2	Version Writer StartPage	EditorialTeam	Sano	Takahashi	2026/10/17	Draft
-	//middle	6	How to Write Large Middle Small	EditorialTeam	Sano	Takahashi
-		//small	3	Article Line Format	EditorialTeam	Sano	Takahashi	2026/10/18	Draft
-		//small	3	Optional or Multiple Members	EditorialTeam	Sano	Takahashi	2026/10/18	Draft
-	//middle	6	Mastering Assist Mode	EditorialTeam	Sano	Takahashi
-		//small	2	Triggering Suggestions	EditorialTeam	Sano	Takahashi	2026/10/19	Draft
-		//small	2	Key Operations	EditorialTeam	Sano	Takahashi	2026/10/19	Draft
-		//small	2	Hold Assist Flow	EditorialTeam	Sano	Takahashi	2026/10/20	Draft
-//large	20	Chapter3 Reading the Board Display	EditorialTeam	Sano	Takahashi
-	//middle	8	Meaning of Bands and Colors	EditorialTeam	Sano	Takahashi
-		//small	4	Over and Under States	EditorialTeam	Sano	Takahashi	2026/10/22	Draft
-		//small	4	Continuation and Spread Borders	EditorialTeam	Sano	Takahashi	2026/10/22	Draft
-	//middle	6	Advanced Board Settings	EditorialTeam	Sano	Takahashi
-		//small	2	8Page Board Handling	EditorialTeam	Sano	Takahashi	2026/10/23	Draft
-		//small	2	Inheritance Rules	EditorialTeam	Sano	Takahashi	2026/10/23	Draft
-		//small	2	LeftRight Opening Differences	EditorialTeam	Sano	Takahashi	2026/10/24	Draft
-	//middle	6	Hold Display Rules	EditorialTeam	Sano	Takahashi
-		//small	3	How to Read Hold Boards	EditorialTeam	Sano	Takahashi	2026/10/25	Draft
-		//small	3	Hold Entries Anywhere	EditorialTeam	Sano	Takahashi	2026/10/25	Draft
-//large	16	Chapter4 Using Article List	EditorialTeam	Sano	Takahashi
-	//middle	6	Cascade View ONOFF	EditorialTeam	Sano	Takahashi
-	//middle	5	Handling Missing Hierarchy	EditorialTeam	Sano	Takahashi
-	//middle	5	Print and CSV Export	EditorialTeam	Sano	Takahashi
-//large	14	Chapter5 Managing Inserts and Holds	EditorialTeam	Sano	Takahashi
-	//middle	7	Insert PageAdvance Design	EditorialTeam	Sano	Takahashi
-	//middle	7	Hold Workflow Template	EditorialTeam	Sano	Takahashi
-//large	12	Chapter6 English Mode Tips	EditorialTeam	Sano	Takahashi
-	//middle	6	How to Use mode en	EditorialTeam	Sano	Takahashi
-	//middle	6	English Command Cheat Sheet	EditorialTeam	Sano	Takahashi
-//large	6	AppendixA Common Errors and Fixes	EditorialTeam	Sano	Takahashi
-//large	5	AppendixB Input Templates	EditorialTeam	Sano	Takahashi
-//large	4	Index and Colophon	EditorialTeam	Sano	Takahashi
-//insert	3	4 Foldout AutoDaiwarer Shortcut Sheet	EditorialTeam	Sano	Takahashi	2026/11/15	Prepress A3 style
-//hold	2	AppendixC Operation Checklist	EditorialTeam	Sano	Takahashi	2026/11/25	Draft use if space
-//hold	3	Bonus Roundtable Layout War Stories	EditorialTeam	Sano	Takahashi	2026/11/28	Draft
+//体裁
+	//opening	left
+	//pages	16*6+8
+	//start-page	1
+//台構成
+	//*	start board	color/pages	board pages
+	//board	1	1C	16
+	//board	3	4C	16
+	//board	5	1C	16
+	//*
+//目次計画
+	//article-fields	Pages	Article	Desk	Editor	Writer	Deadline	Status	Memo
+	//large	1	Frontispiece	EditorialTeam	Sano	Takahashi
+	//large	3	Contents and How to Read	EditorialTeam	Sano	Takahashi
+	//large	10	Chapter1 What Is AutoDaiwarer	EditorialTeam	Sano	Takahashi
+		//middle	4	What You Can Do	EditorialTeam	Sano	Takahashi
+			//small	2	Overview of Board View	EditorialTeam	Sano	Takahashi	2026/10/10	Draft
+			//small	2	Article List and CSV Roles	EditorialTeam	Sano	Takahashi	2026/10/11	Draft
+		//middle	6	Basic Workflow	EditorialTeam	Sano	Takahashi
+			//small	3	From New Input to Save	EditorialTeam	Sano	Takahashi	2026/10/12	Draft
+			//small	3	From Load to Re-Edit	EditorialTeam	Sano	Takahashi	2026/10/13	Draft
+	//large	18	Chapter2 First Input Practice	EditorialTeam	Sano	Takahashi
+		//middle	6	How to Write Meta Fields	EditorialTeam	Sano	Takahashi
+			//small	2	Filename and Title	EditorialTeam	Sano	Takahashi	2026/10/15	Draft
+			//small	2	Opening and Total Pages	EditorialTeam	Sano	Takahashi	2026/10/16	Draft
+			//small	2	Version Writer StartPage	EditorialTeam	Sano	Takahashi	2026/10/17	Draft
+		//middle	6	How to Write Large Middle Small	EditorialTeam	Sano	Takahashi
+			//small	3	Article Line Format	EditorialTeam	Sano	Takahashi	2026/10/18	Draft
+			//small	3	Optional or Multiple Members	EditorialTeam	Sano	Takahashi	2026/10/18	Draft
+		//middle	6	Mastering Assist Mode	EditorialTeam	Sano	Takahashi
+			//small	2	Triggering Suggestions	EditorialTeam	Sano	Takahashi	2026/10/19	Draft
+			//small	2	Key Operations	EditorialTeam	Sano	Takahashi	2026/10/19	Draft
+			//small	2	Hold Assist Flow	EditorialTeam	Sano	Takahashi	2026/10/20	Draft
+	//large	20	Chapter3 Reading the Board Display	EditorialTeam	Sano	Takahashi
+		//middle	8	Meaning of Bands and Colors	EditorialTeam	Sano	Takahashi
+			//small	4	Over and Under States	EditorialTeam	Sano	Takahashi	2026/10/22	Draft
+			//small	4	Continuation and Spread Borders	EditorialTeam	Sano	Takahashi	2026/10/22	Draft
+		//middle	6	Advanced Board Settings	EditorialTeam	Sano	Takahashi
+			//small	2	8Page Board Handling	EditorialTeam	Sano	Takahashi	2026/10/23	Draft
+			//small	2	Inheritance Rules	EditorialTeam	Sano	Takahashi	2026/10/23	Draft
+			//small	2	LeftRight Opening Differences	EditorialTeam	Sano	Takahashi	2026/10/24	Draft
+		//middle	6	Hold Display Rules	EditorialTeam	Sano	Takahashi
+			//small	3	How to Read Hold Boards	EditorialTeam	Sano	Takahashi	2026/10/25	Draft
+			//small	3	Hold Entries Anywhere	EditorialTeam	Sano	Takahashi	2026/10/25	Draft
+	//large	16	Chapter4 Using Article List	EditorialTeam	Sano	Takahashi
+		//middle	6	Cascade View ONOFF	EditorialTeam	Sano	Takahashi
+		//middle	5	Handling Missing Hierarchy	EditorialTeam	Sano	Takahashi
+		//middle	5	Print and CSV Export	EditorialTeam	Sano	Takahashi
+	//large	14	Chapter5 Managing Inserts and Holds	EditorialTeam	Sano	Takahashi
+		//middle	7	Insert PageAdvance Design	EditorialTeam	Sano	Takahashi
+		//middle	7	Hold Workflow Template	EditorialTeam	Sano	Takahashi
+	//large	12	Chapter6 English Mode Tips	EditorialTeam	Sano	Takahashi
+		//middle	6	How to Use mode en	EditorialTeam	Sano	Takahashi
+		//middle	6	English Command Cheat Sheet	EditorialTeam	Sano	Takahashi
+	//large	6	AppendixA Common Errors and Fixes	EditorialTeam	Sano	Takahashi
+	//large	5	AppendixB Input Templates	EditorialTeam	Sano	Takahashi
+	//large	4	Index and Colophon	EditorialTeam	Sano	Takahashi
+	//insert	3	4	Foldout AutoDaiwarer Shortcut Sheet	EditorialTeam	Sano	Takahashi	2026/11/15	Prepress	A3 style
+	//hold	2	AppendixC Operation Checklist	EditorialTeam	Sano	Takahashi	2026/11/25	Draft	use if space
+	//hold	3	Bonus Roundtable Layout War Stories	EditorialTeam	Sano	Takahashi	2026/11/28	Draft
+	//*
+//表紙まわり
+	//*	no separate cover-package items in this sample
 //*
