@@ -16,6 +16,7 @@
 5. `記事一覧` で一覧表示し、`CSV出力` と `印刷` が可能
 6. `キャンセル` で編集画面を閉じる（保存せず閉じる場合）
 7. `ヘルプ` で簡易説明を表示
+8. `面付け` から `ラフ用PPTX出力` / `PPTX更新・出力` / `PDF読み込み（見開き）` を使って、見開きラフ制作〜面付け確認まで実行可能
 
 ### 英語モード
 
@@ -58,6 +59,18 @@
 - `English Mode` チェック（または `?mode=en`）による英語UI・英語コマンド入力対応
 - （本番）`/api/session` 経由での起動確認、任意で `mode` と `Drive` を組み合わせたソース読込・見た目切替え（`/api/initial-data`、`uiTheme`。詳細は `USAGE.md`）
 - `?share=<共有ID>&syncEndpoint=<AppsScriptURL>` による Drive 同期（自動保存・自動再取得・競合検知）
+- `ラフ用PPTX出力`（見開きラフPPTXを生成）
+- `PPTX更新・出力`（既存PPTXの書き込みを維持しながら再配置。1ページ出力/目次名・ページ番号非表示のオプション対応）
+- `PDF読み込み（見開き）`（見開きPDFを台割ページ順に分割して面付け確認）
+
+## 代表的な運用フロー（概要）
+
+1. 台割を作成し、節目で `ラフ用PPTX出力` を実行
+2. PowerPointで見開きラフを作り込む
+3. 台割変更時は `PPTX更新・出力` で既存ラフを引き継ぎながら更新
+4. 見開きPDFを書き出して `PDF読み込み（見開き）` で確認
+5. 面付けシミュレーション結果を折って、ミニチュア本で物理確認
+6. 最終段階で `PPTX更新・出力` の「1ページずつ出力」+「目次名とページ番号を表示しない」を使い、PDF化して入稿データ化
 
 ## Google Drive 同期（Apps Script）
 
@@ -89,6 +102,7 @@ For detailed usage (input format and sync setup), see `USAGE.md`.
 5. Click `記事一覧` (`Article List`) for table view, CSV export, and list print.
 6. Click `キャンセル` (`Cancel`) to exit editor without saving.
 7. Click `ヘルプ` (`Help`) for an in-app quick guide.
+8. Use `面付け` (`Imposition`) for `Export Rough PPTX`, `Update / Export PPTX`, and `Load PDF (spread)` to cover rough drafting through print-layout checks.
 
 ### English mode
 
@@ -128,6 +142,18 @@ See `USAGE.md` for full details.
 - English UI via `?mode=en` parsed in the browser.
 - Hosted builds: **`/api/session`** gate plus optional **`data` + Drive** bootstrap and **`uiTheme`** styling via **`/api/initial-data`** (see `USAGE.md`).
 - Supports Drive sync via `?share=<id>&syncEndpoint=<AppsScriptURL>` (auto-save, auto-poll, conflict detection).
+- `Export Rough PPTX` for spread-based rough drafts.
+- `Update / Export PPTX` to keep existing PPTX rough edits while re-mapping by article match (with single-page / hide-label options).
+- `Load PDF (spread)` to split spread PDFs and verify imposition against flatplan order.
+
+## Typical Workflow (Overview)
+
+1. Build the flatplan and run `Export Rough PPTX` at checkpoints.
+2. Refine spread roughs in PowerPoint.
+3. When flatplan changes, run `Update / Export PPTX` to preserve rough edits as much as possible.
+4. Export spread PDF and load it with `Load PDF (spread)`.
+5. Fold printed imposition output to review a physical miniature booklet.
+6. For final handoff, use `Update / Export PPTX` with single-page output + hide TOC/page labels, then export PDF for print submission.
 
 ## Google Drive Sync (Apps Script)
 
