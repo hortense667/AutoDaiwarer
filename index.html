@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AutoDaiwarer JS</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="bannerArea" class="banner-area">
+      <div class="banner-main">広告募集</div>
+      <div class="banner-sub">https://x.com/hortense667</div>
+    </section>
+    <header class="topbar">
+      <div class="topbar-start">
+        <p class="app-brand">
+          <span class="app-brand-name">AutoDaiwarer</span>
+          <span class="app-brand-tag" id="appBrandTag">台割エディタ</span>
+        </p>
+        <div class="meta" id="metaInfo"></div>
+      </div>
+      <div class="actions">
+        <label id="englishModeLabel" class="english-mode-toggle">
+          <input id="englishModeToggle" type="checkbox" />
+          <span>English Mode</span>
+        </label>
+        <button id="editBtn" class="topbar-primary-btn" type="button">入力・編集</button>
+        <button id="topPrintBtn">印刷</button>
+        <button id="impositionBtn">面付け</button>
+        <button id="listBtn">記事一覧</button>
+        <button id="tocDraftBtn" type="button">目次起稿</button>
+        <button id="helpBtn">ヘルプ</button>
+      </div>
+    </header>
+    <div id="printMeta" class="print-meta"></div>
+
+    <main>
+      <section id="boards" class="boards"></section>
+      <button
+        id="boardWidthHandle"
+        class="board-width-handle"
+        type="button"
+        aria-label="台割表示幅を調整"
+        title="左右ドラッグで台割表示幅を調整"
+      >↔</button>
+      <div class="screen-copyright">AutoDaiwarer JS ver.1.0 / (c) 2026 Satoshi Endo all right reserved / HG3BJ Shoftware</div>
+    </main>
+
+    <div id="tooltip" class="tooltip hidden"></div>
+    <section id="printArticleSheet" class="print-article-sheet"></section>
+    <section id="printImpositionSheet" class="print-imposition-sheet"></section>
+
+    <dialog id="editorDialog">
+      <div class="editor-head-row">
+        <h3 id="editorTitle">台割エディタ</h3>
+        <div class="editor-head-actions">
+          <button id="aiDraftBtn" type="button" class="editor-ai-assist-btn">AIお助け</button>
+          <div id="editorSyncNotice" class="editor-sync-notice hidden"></div>
+        </div>
+      </div>
+      <div class="editor-search-row">
+        <input id="editorSearchInput" type="text" placeholder="検索文字列" />
+        <button id="searchNextBtn" type="button">次</button>
+        <button id="searchPrevBtn" type="button">前</button>
+        <button id="recalcPagesBtn" type="button">ページ数再計算</button>
+        <button id="addRevisionLogBtn" type="button">更新履歴追加</button>
+        <label class="editor-wrap-toggle-label">
+          <input id="editorWrapToggle" type="checkbox" checked />
+          折り返し
+        </label>
+        <label class="editor-assist-toggle-label">
+          <input id="editorAssistToggle" type="checkbox" />
+          <span id="editorAssistToggleLabel">入力補助</span>
+        </label>
+      </div>
+      <div class="editor-text-wrap">
+        <div id="editorSampleGhost" class="editor-sample-ghost hidden" aria-hidden="true">
+          <p class="editor-sample-ghost-hint" id="editorSampleGhostHint"></p>
+          <pre class="editor-sample-ghost-body"></pre>
+        </div>
+        <div id="editorSampleAppliedNotice" class="editor-sample-applied-notice hidden" role="status"></div>
+        <div id="editorLintMirror" class="editor-lint-mirror hidden" aria-hidden="true"></div>
+        <textarea id="editorText" spellcheck="false"></textarea>
+        <div id="editorCandidate" class="editor-candidate"></div>
+      </div>
+      <div id="editorAssist" class="editor-assist">
+        <div class="editor-help">入力補助ON時のみ：空行（またはタブのあと）で「//」を入力すると補助開始。上下矢印で候補を選び、右矢印で確定。ページ数項目は上下矢印で増減、右矢印で確定。Enterは改行入力して補助終了、Escでも補助終了。項目クリックによる補助も同様にON時のみ有効です。</div>
+      </div>
+      <div class="dialog-actions">
+        <input id="fileLoader" class="sr-file-input" type="file" accept=".dwml,.txt,text/plain" />
+        <button id="pickFileBtn" type="button">ファイルから読み込み</button>
+        <button id="fileSaveBtn" type="button">ファイルへ保存（.dwml）</button>
+        <button id="insertSampleBtn">サンプル入力</button>
+        <button id="restoreBackupBtn" class="hidden" type="button">バックアップから戻す</button>
+        <button id="cancelEditBtn">キャンセル</button>
+        <button id="closeEditorBtn" type="button">閉じる（台割に反映）</button>
+      </div>
+    </dialog>
+
+    <dialog id="dwmlLintDialog" class="meta-edit-dialog dwml-lint-dialog">
+      <h3>台割の文法チェック</h3>
+      <p id="dwmlLintSummary" class="dwml-lint-summary"></p>
+      <ul id="dwmlLintList" class="dwml-lint-list"></ul>
+      <div class="dialog-actions">
+        <button id="dwmlLintJumpBtn" type="button">先頭の問題行へ</button>
+        <button id="dwmlLintProceedBtn" type="button" class="hidden">警告を無視して反映</button>
+        <button id="dwmlLintCloseBtn" type="button">閉じる</button>
+      </div>
+    </dialog>
+
+    <dialog id="revisionLogDialog" class="meta-edit-dialog">
+      <h3>更新履歴</h3>
+      <div class="meta-edit-fields">
+        <label class="meta-edit-label">日時</label>
+        <input id="revisionLogDatetime" type="text" class="meta-edit-input" maxlength="40" />
+        <label class="meta-edit-label">更新者</label>
+        <input id="revisionLogAuthor" type="text" class="meta-edit-input" maxlength="80" />
+        <label class="meta-edit-label">更新内容（最大256文字）</label>
+        <textarea id="revisionLogBody" class="meta-edit-textarea" maxlength="256" rows="4"></textarea>
+      </div>
+      <div class="dialog-actions">
+        <button id="revisionLogCancelBtn" type="button">キャンセル</button>
+        <button id="revisionLogSaveBtn" type="button">保存</button>
+      </div>
+    </dialog>
+
+    <dialog id="inlineNoteDialog" class="meta-edit-dialog">
+      <h3>コメント</h3>
+      <div class="meta-edit-fields">
+        <label class="meta-edit-label">日時</label>
+        <input id="inlineNoteDatetime" type="text" class="meta-edit-input" maxlength="40" />
+        <label class="meta-edit-label">更新者</label>
+        <input id="inlineNoteAuthor" type="text" class="meta-edit-input" maxlength="80" />
+        <label class="meta-edit-label">内容（最大1000文字）</label>
+        <textarea id="inlineNoteBody" class="meta-edit-textarea" maxlength="1000" rows="6"></textarea>
+      </div>
+      <div class="dialog-actions">
+        <button id="inlineNoteCancelBtn" type="button">キャンセル</button>
+        <button id="inlineNoteSaveBtn" type="button">保存</button>
+      </div>
+    </dialog>
+
+    <dialog id="articleDialog">
+      <h3>記事一覧</h3>
+      <div id="articleListContainer" class="article-list"></div>
+      <div class="dialog-copyright">AutoDaiwarer JS ver.1.0 / (c) 2026 Satoshi Endo all right reserved / HG3BJ Shoftware</div>
+      <div class="dialog-actions">
+        <button id="csvBtn">CSV出力</button>
+        <button id="tocDraftFromListBtn" type="button">目次起稿</button>
+        <button id="printBtn">印刷</button>
+        <button id="cancelListBtn" type="button">キャンセル</button>
+        <button id="closeListBtn" type="button">閉じる（変更時は台割に反映）</button>
+      </div>
+    </dialog>
+
+    <dialog id="aiDraftDialog" class="meta-edit-dialog ai-draft-dialog">
+      <h3>AIお助け</h3>
+      <p class="ai-draft-note">言葉で指示するだけで、台割の新規作成、現台割の修正、再構成ができます。現台割をファイル保存してから実行することをお勧めします。</p>
+      <div class="meta-edit-fields">
+        <label class="meta-edit-label" for="aiDraftGptUrl">専用GPTのURL（日本語用）</label>
+        <input id="aiDraftGptUrl" type="url" class="meta-edit-input" placeholder="https://chatgpt.com/g/g-xxxxxxxx" autocomplete="off" />
+        <button id="aiDraftSaveUrlBtn" type="button" class="ai-draft-secondary-btn">URLを保存</button>
+        <label class="toc-draft-check"><input id="aiDraftIncludeFlatplan" type="checkbox" checked /> 現在の台割全文をコピーに含める（修正・再構成向け）</label>
+        <label class="meta-edit-label" for="aiDraftMemo">指示・メモ</label>
+        <textarea id="aiDraftMemo" class="ai-draft-memo" rows="10" spellcheck="true" placeholder=""></textarea>
+      </div>
+      <div class="ai-draft-actions-row">
+        <button id="aiDraftLaunchBtn" type="button">指示メモと必要な情報をコピー・専用GPTを開く（GPTの入力欄に貼り付け）</button>
+      </div>
+      <label class="meta-edit-label" for="aiDraftImportPreview">GPTの出力を貼り込んでプレビューする</label>
+      <p id="aiDraftImportHint" class="ai-draft-import-hint">GPTで求めた結果は、この下の欄に貼り付けてください（Windows：Ctrl+V、macOS：⌘V）。</p>
+      <textarea id="aiDraftImportPreview" class="toc-draft-preview" rows="10" spellcheck="false" placeholder=""></textarea>
+      <div class="dialog-actions">
+        <button id="aiDraftApplyBtn" type="button">台割に反映</button>
+        <button id="aiDraftCloseBtn" type="button">閉じる</button>
+      </div>
+    </dialog>
+
+    <dialog id="tocDraftDialog" class="meta-edit-dialog toc-draft-dialog">
+      <h3>目次起稿</h3>
+      <p class="toc-draft-note">台割の記事名とノンブル（<code>//開始ページ番号</code>・<code>//本文ノンブル開始位置</code>・別丁のページ進み）から、印刷用目次原稿を生成します。表紙・帯・保留は含みません。</p>
+      <div class="meta-edit-fields">
+        <label class="meta-edit-label" for="tocDraftDepth">出力する階層</label>
+        <select id="tocDraftDepth" class="meta-edit-input">
+          <option value="large">大目次のみ</option>
+          <option value="large-middle" selected>大目次＋中目次</option>
+          <option value="all">大目次＋中目次＋小目次</option>
+        </select>
+        <label class="meta-edit-label" for="tocDraftStyle">区切り</label>
+        <select id="tocDraftStyle" class="meta-edit-input">
+          <option value="dots" selected>点線（……）</option>
+          <option value="tab">タブ区切り</option>
+        </select>
+        <label class="toc-draft-check"><input id="tocDraftIncludeTitle" type="checkbox" checked /> 先頭に書名を付ける</label>
+      </div>
+      <label class="meta-edit-label" for="tocDraftPreview">プレビュー</label>
+      <textarea id="tocDraftPreview" class="toc-draft-preview" readonly rows="14" spellcheck="false"></textarea>
+      <div class="dialog-actions">
+        <button id="tocDraftCopyBtn" type="button">コピー</button>
+        <button id="tocDraftDownloadBtn" type="button">テキスト保存</button>
+        <button id="tocDraftCloseBtn" type="button">閉じる</button>
+      </div>
+    </dialog>
+
+    <dialog id="impositionDialog" class="imposition-dialog">
+      <h3>面付けシミュレーション（プリント出力を折って本のミニチュアを作って確認できます。ラフ用PPTXの書き出しとPDF読み込みも可能）</h3>
+      <div class="imposition-controls">
+        <label class="imposition-label" for="impositionBoardInput">対象の台番号</label>
+        <input id="impositionBoardInput" type="text" class="imposition-input" placeholder="例: 1,2 / 1 4 2 3（この順でつなぐ）/ 3-4 / すべて" title="面付けする台の指定。全ページなら空欄でOK（「すべて」も同じ・台番号順）。「1,2」「3-4」で台を選び、「1 4 2 3」と書くとその順につなぎます" />
+        <div class="imposition-pdf-row">
+          <input id="impositionPdfLoader" class="sr-file-input" type="file" accept="application/pdf" />
+          <button id="impositionLoadPdfBtn" type="button" title="1ページずつのPDF（入稿用データなど）で仕上がりを確認したいときに使います。ノンブル順に各ページを面付けの枠へ流し込みます">PDFを読み込む</button>
+          <button id="impositionLoadSpreadPdfBtn" type="button" title="見開きのPDF（ラフ用PPTXをPDF化したものなど）で確認したいときに使います。見開きを左右に分割してから面付けの枠へ流し込みます">PDF読み込み（見開き）</button>
+          <div id="impositionPdfName" class="imposition-pdf-name">未読み込み</div>
+        </div>
+        <div class="imposition-print-basic" role="group" aria-label="面付け印刷（位置）">
+          <label class="imposition-label-inline" for="impositionPrintPaperSize">印刷判型</label>
+          <select id="impositionPrintPaperSize" class="imposition-input imposition-print-paper-select" title="面付け印刷に使う用紙サイズ（実寸）。変更すると8面・16面とも列・行の位置をデフォルトに戻します">
+            <option value="A4" selected>A4</option>
+            <option value="A3">A3</option>
+            <option value="B5">B5</option>
+            <option value="B4">B4</option>
+          </select>
+          <label class="imposition-label-inline" for="impositionPdfScalePercent">拡大率(%)</label>
+          <input id="impositionPdfScalePercent" type="number" class="imposition-input imposition-scale-input" min="10" max="300" step="1" value="100" title="各ページPDFのスロット内での拡大縮小" />
+          <button id="impositionResetLayoutBtn" type="button" class="imposition-margin-apply-btn" title="判型・縦横・面数から列X・行Yを自動配置">デフォルト位置</button>
+          <label class="imposition-label-inline" for="impositionFrontColXMM">表 列X(mm)</label>
+          <input id="impositionFrontColXMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 12,80,148,216" title="表面：各列の左端（紙左端からmm、カンマ区切り）" />
+          <label class="imposition-label-inline" for="impositionFrontRowYMM">表 行Y(mm)</label>
+          <input id="impositionFrontRowYMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 10,78" title="表面：各行の上端（紙上端からmm、カンマ区切り）" />
+          <label class="imposition-label-inline" for="impositionBackColXMM">裏 列X(mm)</label>
+          <input id="impositionBackColXMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 12,80,148,216" title="裏面：各列の左端（紙左端からmm、カンマ区切り）" />
+          <label class="imposition-label-inline" for="impositionBackRowYMM">裏 行Y(mm)</label>
+          <input id="impositionBackRowYMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 10,78" title="裏面：各行の上端（紙上端からmm、カンマ区切り）" />
+        </div>
+        <p id="impositionPrintDriverNotice" class="imposition-print-driver-notice" hidden></p>
+        <div class="imposition-main-options">
+          <label class="imposition-check" title="各ページの枠にページ番号と記事名を表示します。折ってページ順を確かめるときはON、仕上がりの見え方を確かめるときはOFFが便利です"><input id="impositionShowPageLabel" type="checkbox" checked /> ページ表記表示</label>
+          <label class="imposition-check" title="1枚の紙を8ページに折る台のときにONにします。OFFなら16面付け。地図折りを入力すると自動でOFFになります"><input id="impositionUse8up" type="checkbox" /> 8面付け</label>
+          <label class="imposition-check" title="中綴じ（針金留め）の本のときにONにします。外側の折から順に重ねるページ並びで面付けします"><input id="impositionSaddleStitch" type="checkbox" /> 中綴じ（外側から）</label>
+          <div class="imposition-mapfold-row">
+            <label class="imposition-label-inline" for="impositionMapFoldInput">地図折り（16個）</label>
+            <input id="impositionMapFoldInput" type="text" class="imposition-input imposition-mapfold-input" value="" placeholder="例: 1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15" title="1枚を16ページに折る配置を自分で決める欄（16面付け専用）。1〜16を重複なく16個。各数字＝台内の相対ページ位置（1＝台の1ページ目）。並び順＝紙面のマス目順で、前半8個＝表面・後半8個＝裏面。各面は縦判4列×2行／横判2列×4行を上段左→右で埋めます。入力すると8面付け・8P折本は自動OFF" />
+            <label class="imposition-check" title="8P折本、ワンシートZINE、マジック折などと言われる１枚の紙を8つにたたんで、中央に切り込みを入れてつくる簡易製本用の面付です"><input id="impositionUse8pBooklet" type="checkbox" /> 8P折本</label>
+          </div>
+        </div>
+        <div class="imposition-pptx-row">
+          <button id="impositionExportSpreadPptxBtn" type="button" title="ラフを新しく作り始めるときに使います。台割から見開きラフのPPTXを新規に書き出します（編集済みラフは引き継ぎません）">ラフ用PPTX出力</button>
+          <button id="impositionUpdateSpreadPptxBtn" type="button" title="台割を直したあと、編集済みのラフを活かして作り直すときに使います。記事が一致するページは旧PPTXから図形を引き継ぎます">PPTX更新・出力</button>
+          <p id="impositionPptxFlow" class="imposition-pptx-flow">流れ：台割 →［ラフ用PPTX出力］→ PowerPointで編集 →［PPTX更新・出力］→ PowerPointでPDF化 →［PDF読み込み］で確認</p>
+        </div>
+      </div>
+      <div id="impositionError" class="imposition-error hidden"></div>
+      <div id="impositionWarning" class="imposition-warning hidden"></div>
+      <div id="impositionPreview" class="imposition-preview"></div>
+      <div id="impositionProcessingOverlay" class="imposition-processing-overlay hidden" aria-live="polite" aria-busy="false">
+        <div class="imposition-processing-panel">
+          <span id="impositionProcessingMessage">処理中…</span>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="impositionPrintBtn" type="button" title="いま表示している面付けをPDFに書き出します。両面印刷して折るとミニチュア本になります（セブン-イレブンなどでは「両面・長辺とじ」）">面付けPDFを出力</button>
+        <button id="impositionSaveParamsBtn" type="button" title="印刷判型・拡大率・表裏の列X/行Yなど、この画面の設定を台割データに保存します">パラメーターを保存</button>
+        <button id="impositionCloseBtn" type="button" title="面付けシミュレーションを閉じます">閉じる</button>
+      </div>
+    </dialog>
+
+    <dialog id="impositionPptxDialog" class="meta-edit-dialog">
+      <h3>PPTXを更新</h3>
+      <div class="meta-edit-fields">
+        <label class="imposition-check"><input id="impositionPptxSinglePage" type="checkbox" /> 見開きでなく1ページずつ出力</label>
+        <label class="imposition-check"><input id="impositionPptxHideLabels" type="checkbox" /> 目次名とページ番号を表示しない</label>
+      </div>
+      <div class="dialog-actions">
+        <button id="impositionPptxDialogCancelBtn" type="button">キャンセル</button>
+        <button id="impositionPptxDialogRunBtn" type="button">PPTXを出力</button>
+      </div>
+    </dialog>
+
+    <dialog id="helpDialog">
+      <h3>ヘルプ（リファレンス）</h3>
+      <div class="help-body">
+        <p class="help-lead">リファレンス要約（詳細は <code>USAGE.md</code>）。</p>
+        <h4>画面・色</h4>
+        <ul class="help-ref">
+          <li>帯：上＝大目次、中＝中、下＝小。白＝通常、ピンク＝オーバー、水色＝アンダー。</li>
+          <li>最下段の<strong>ステータス帯</strong>：色数（1C〜4C、表裏で違う場合あり）で薄いグレー。文字は進行欄をそのまま表示（語句の色分けなし）。</li>
+          <li>右開きはページが右→左。帯・別丁ホバーで担当・締切・進行・メモ等。</li>
+        </ul>
+        <h4>テキスト（<code>//</code> 行・タブ区切り）</h4>
+        <ul class="help-ref">
+          <li>略記：<code>//\t</code>＝大、<code>///\t</code>＝中、<code>////\t</code>＝小。</li>
+          <li><code>//ページ数</code>：式可。記事ページは小数1桁可（途中で記事切替）。</li>
+          <li><code>//開始ページ番号</code>：本文アラビア数字の開始値（既定 <code>1</code>）。</li>
+          <li><code>//本文ノンブル開始位置</code>：台割上でアラビア数字が始まる位置（既定 <code>1</code>）。それより前は <code>i</code> <code>ii</code> … の小文字ローマ数字（例: <code>5</code> → iv までローマ、5 ページ目から 1, 2, 3…）。</li>
+          <li><code>//開き</code>：<code>左</code>（既定）／<code>右</code>。</li>
+          <li><code>//台\t番号\t版型\tページ数</code>：版型 <code>4C1C</code>＝先が面付<strong>表</strong>・後が<strong>裏</strong>の色数（<code>4C\t1C</code> 可）。欠項は直前継承。8p台も枠は16。色数はステータス帯の濃さに反映。</li>
+          <li><code>//別丁</code>：挿入先 <code>0</code>＝本先頭ブロック。<code>//保留</code>は配置自由。<code>//*</code>コメント。</li>
+          <li>表紙・帯・カバー・付録は <code>//目次項目設定</code> に従い、<code>//大</code> と同様に先頭でページ数を指定（例: <code>//表紙	5	担当	締切	メモ</code>）。台割では各項目を1から連番表示。英語モード表示名: Cover / Obi / Dust jacket / Appendix。</li>
+          <li><code>-</code>：台割・ホバーは直前有効値（一覧はそのまま）。</li>
+        </ul>
+        <h4>入力補助</h4>
+        <ul class="help-ref">
+          <li>エディタ「入力補助」ON時のみ。↑↓候補、→確定、Enterで終了など（補助パネル参照）。</li>
+          <li>上部 <code>English Mode</code> → <code>?mode=en</code>、指令は <code>//large</code> 等。</li>
+        </ul>
+        <h4>本番（<code>/api/session</code>）</h4>
+        <ul class="help-ref">
+          <li><code>uiTheme</code>、Drive <code>data</code>、<code>share</code>／<code>syncEndpoint</code> 等 → <code>USAGE.md</code>。</li>
+        </ul>
+        <h4>操作</h4>
+        <ul class="help-ref">
+          <li>編集：<strong>入力・編集</strong>で .dwml 保存・反映。<strong>台割エディタ</strong>内の <strong>AIお助け</strong>＝Custom GPT（新規／修正／再構成、API不要）。印刷＝台割A4縦。一覧＝表編集・CSV・印刷。<strong>目次起稿</strong>＝見出し＋ノンブル原稿。</li>
+          <li><strong>面付け</strong>：台番は<strong>記載順</strong>で連結。印刷位置は判型選択でデフォルトの列X・行Y（mm）が出て、あとはミリ微調整と拡大率のみ。表のみ／裏のみ＝手動両面向け。セブン＝長辺とじ両面。</li>
+          <li><strong>ラフ用PPTX出力</strong>：判型2ページ分の横長スライド（例: A4縦→A3横）で見開きラフPPTXを出力。<code>//開き</code> に合わせて左右配置（右開き＝片起こし・最終ページの空白処理あり）。各ページ天側に <code>//大</code>・<code>//中</code>・<code>//小</code> の記事名を表示（同一組み合わせには連番）。PPTX内に管理情報を埋め込み。PowerPointで編集後PDF化し、<strong>PDF読み込み（見開き）</strong>で面付け確認。出力にも<strong>数秒〜数十秒</strong>かかることがあり、処理中は「処理中…」を表示します。</li>
+          <li><strong>PPTX更新・出力</strong>：更新ダイアログで「見開きでなく1ページずつ出力」「目次名とページ番号を表示しない」を指定して出力できます。未チェック時は従来どおり見開き出力で、記事が一致する半ページは旧PPTXから形状をコピー（最下位クラス名→上位クラス→連番で照合）。処理中は「処理中…」を表示します。</li>
+          <li><strong>PDF読み込み（見開き）</strong>：見開きPDFをノンブル順（1,2,3…）に分割して読み込み。面付けの台指定が <code>1 4 2 3</code> のような変則順でも、各スロットは台割上のページ番号で参照するため正しく対応します（PDFは台割<strong>全体</strong>のページ列が必要）。</li>
+          <li><strong>背丁</strong>（面付プレビュー／印刷）：16面で1–16が隣、8面で1–8が隣の折のみ、<strong>折り（背）の中央</strong>に表示。<code>//書名</code>先頭15字＋区切り＋《折り番号》（印刷順に1,2,…）。折位置に薄線（文言部分は線なし・線と字の間に余白）。縦判＝縦組、横判＝横書き。横判16などで隣接しない配置では出ない場合あり。</li>
+          <li><strong>地図折り</strong>（16面付け専用）：1枚を16ページに折る配置を自分で決められます。<code>1〜16</code>を<strong>重複なくちょうど16個</strong>、カンマか空白で指定（<code>、</code><code>，</code>も可）。各数字は<strong>台（16ページの折丁）の中の相対ページ位置</strong>（<code>1</code>＝その台の1ページ目）。並び順は<strong>紙面のマス目に置く順</strong>で、<strong>前半8個＝表面／後半8個＝裏面</strong>。各面は縦判＝<strong>4列×2行</strong>（上段を左→右、続けて下段を左→右）、横判＝<strong>2列×4行</strong>（上の行から左→右）で埋めます。入力すると<strong>8面付け・8P折本は自動OFF</strong>。例（説明用）：<code>1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15</code>。</li>
+          <li><strong>8P折本</strong>（ワンシートZINE／マジック折）：1枚を8つに折って中央に切り込みを入れて作る簡易製本用の面付です。<strong>縦判のときのみ</strong>使え、<strong>8面付け・地図折りとは排他</strong>です。8ページを超える本文でも、16ページ単位の相対ページ位置で同じ並びを繰り返して割り付けます。面付順は <code>//開き</code> に連動し、右開き＝表 <code>1,8,7,6 / 2,3,4,5</code>・裏 <code>9,16,15,14 / 10,11,12,13</code>、左開き＝表 <code>6,7,8,1 / 5,4,3,2</code>・裏 <code>14,15,16,9 / 13,12,11,10</code>。</li>
+          <li>一覧キャンセル＝破棄。外側クリックでは閉じない。台割上はDnD並べ替え等。</li>
+        </ul>
+        <h4>その他</h4>
+        <ul class="help-ref">
+          <li>サンプル：<a href="https://github.com/hortense667/AutoDaiwarer" target="_blank" rel="noopener noreferrer">GitHub</a>。</li>
+          <li>免責：利用損害の補償なし。サポート不保障。</li>
+        </ul>
+      </div>
+      <div class="dialog-copyright">(c) 2026 Satoshi Endo all right reserved / HG3BJ Software / X: https://x.com/hortense667</div>
+      <div class="dialog-actions">
+        <button id="openBugReportBtn" type="button">バグレポートはこちらからお寄せください</button>
+        <button id="closeHelpBtn">閉じる</button>
+      </div>
+    </dialog>
+
+    <dialog id="bugReportDialog" class="meta-edit-dialog">
+      <h3>バグレポート</h3>
+      <div class="bug-report-body">
+        <p>不具合の状況をお知らせください。内容は2000文字以内で入力できます。</p>
+      </div>
+      <div class="meta-edit-fields bug-report-fields">
+        <label class="meta-edit-label" for="bugReportEmail">メアド（任意）</label>
+        <input id="bugReportEmail" type="email" class="meta-edit-input" maxlength="320" placeholder="you@example.com" />
+        <label class="meta-edit-label" for="bugReportMessage">内容（2000文字以内）</label>
+        <textarea id="bugReportMessage" class="meta-edit-textarea" maxlength="2000" rows="8" placeholder="発生した操作、期待した結果、実際の結果など"></textarea>
+        <div id="bugReportCounter" class="bug-report-counter">0 / 2000</div>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancelBugReportBtn" type="button">キャンセル</button>
+        <button id="submitBugReportBtn" type="button">送信</button>
+      </div>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
