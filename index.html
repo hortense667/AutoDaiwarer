@@ -240,8 +240,9 @@
           <label class="imposition-check" title="中綴じ（針金留め）の本のときにONにします。外側の折から順に重ねるページ並びで面付けします"><input id="impositionSaddleStitch" type="checkbox" /> 中綴じ（外側から）</label>
           <div class="imposition-mapfold-row">
             <label class="imposition-label-inline" for="impositionMapFoldInput">地図折り（16個）</label>
-            <input id="impositionMapFoldInput" type="text" class="imposition-input imposition-mapfold-input" value="" placeholder="例: 1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15" title="1枚を16ページに折る配置を自分で決める欄（16面付け専用）。1〜16を重複なく16個。各数字＝台内の相対ページ位置（1＝台の1ページ目）。並び順＝紙面のマス目順で、前半8個＝表面・後半8個＝裏面。各面は縦判4列×2行／横判2列×4行を上段左→右で埋めます。入力すると8面付け・8P折本は自動OFF" />
-            <label class="imposition-check" title="8P折本、ワンシートZINE、マジック折などと言われる１枚の紙を8つにたたんで、中央に切り込みを入れてつくる簡易製本用の面付です"><input id="impositionUse8pBooklet" type="checkbox" /> 8P折本</label>
+            <input id="impositionMapFoldInput" type="text" class="imposition-input imposition-mapfold-input" value="" placeholder="例: 1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15" title="1枚を16ページに折る配置を自分で決める欄（16面付け専用）。1〜16を重複なく16個。各数字＝台内の相対ページ位置（1＝台の1ページ目）。並び順＝紙面のマス目順で、前半8個＝表面・後半8個＝裏面。各面は縦判4列×2行／横判2列×4行を上段左→右で埋めます。入力すると8面付け・8P折本・ガチャポン本は自動OFF" />
+            <label class="imposition-check" title="8P折本、ワンシートZINE、マジック折などと言われる１枚の紙を8つにたたんで、中央に切り込みを入れてつくる簡易製本用の面付です。8面付け・地図折り・ガチャポン本とは排他です"><input id="impositionUse8pBooklet" type="checkbox" /> 8P折本</label>
+            <label class="imposition-check" title="ガチャポン本用です。通常の16面付けと同じページ配置のまま、各マス内に同じページを裁断枠（縦判は縦40mm×横28.2mm・A4比、横判は縦横入れ替え）いっぱいに縮尺して上下2つ・綴じ側寄せで置きます。背丁文言なし（背のグレー線のみ。裁断位置ではトンボと交差するよう隙間あり）。トンボは綴じ側を除き外側は付けます。通常判型のPDFを「PDFを読み込む」で流し込めます。8面付け・8P折本・地図折りとは排他です"><input id="impositionUseGachaBook" type="checkbox" /> ガチャポン本</label>
           </div>
         </div>
         <div class="imposition-pptx-row">
@@ -316,8 +317,9 @@
           <li><strong>PPTX更新・出力</strong>：更新ダイアログで「見開きでなく1ページずつ出力」「目次名とページ番号を表示しない」を指定して出力できます。未チェック時は従来どおり見開き出力で、記事が一致する半ページは旧PPTXから形状をコピー（最下位クラス名→上位クラス→連番で照合）。処理中は「処理中…」を表示します。</li>
           <li><strong>PDF読み込み（見開き）</strong>：見開きPDFをノンブル順（1,2,3…）に分割して読み込み。面付けの台指定が <code>1 4 2 3</code> のような変則順でも、各スロットは台割上のページ番号で参照するため正しく対応します（PDFは台割<strong>全体</strong>のページ列が必要）。</li>
           <li><strong>背丁</strong>（面付プレビュー／印刷）：16面で1–16が隣、8面で1–8が隣の折のみ、<strong>折り（背）の中央</strong>に表示。<code>//書名</code>先頭15字＋区切り＋《折り番号》（印刷順に1,2,…）。折位置に薄線（文言部分は線なし・線と字の間に余白）。縦判＝縦組、横判＝横書き。横判16などで隣接しない配置では出ない場合あり。</li>
-          <li><strong>地図折り</strong>（16面付け専用）：1枚を16ページに折る配置を自分で決められます。<code>1〜16</code>を<strong>重複なくちょうど16個</strong>、カンマか空白で指定（<code>、</code><code>，</code>も可）。各数字は<strong>台（16ページの折丁）の中の相対ページ位置</strong>（<code>1</code>＝その台の1ページ目）。並び順は<strong>紙面のマス目に置く順</strong>で、<strong>前半8個＝表面／後半8個＝裏面</strong>。各面は縦判＝<strong>4列×2行</strong>（上段を左→右、続けて下段を左→右）、横判＝<strong>2列×4行</strong>（上の行から左→右）で埋めます。入力すると<strong>8面付け・8P折本は自動OFF</strong>。例（説明用）：<code>1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15</code>。</li>
-          <li><strong>8P折本</strong>（ワンシートZINE／マジック折）：1枚を8つに折って中央に切り込みを入れて作る簡易製本用の面付です。<strong>縦判のときのみ</strong>使え、<strong>8面付け・地図折りとは排他</strong>です。8ページを超える本文でも、16ページ単位の相対ページ位置で同じ並びを繰り返して割り付けます。面付順は <code>//開き</code> に連動し、右開き＝表 <code>1,8,7,6 / 2,3,4,5</code>・裏 <code>9,16,15,14 / 10,11,12,13</code>、左開き＝表 <code>6,7,8,1 / 5,4,3,2</code>・裏 <code>14,15,16,9 / 13,12,11,10</code>。</li>
+          <li><strong>地図折り</strong>（16面付け専用）：1枚を16ページに折る配置を自分で決められます。<code>1〜16</code>を<strong>重複なくちょうど16個</strong>、カンマか空白で指定（<code>、</code><code>，</code>も可）。各数字は<strong>台（16ページの折丁）の中の相対ページ位置</strong>（<code>1</code>＝その台の1ページ目）。並び順は<strong>紙面のマス目に置く順</strong>で、<strong>前半8個＝表面／後半8個＝裏面</strong>。各面は縦判＝<strong>4列×2行</strong>（上段を左→右、続けて下段を左→右）、横判＝<strong>2列×4行</strong>（上の行から左→右）で埋めます。入力すると<strong>8面付け・8P折本・ガチャポン本は自動OFF</strong>。例（説明用）：<code>1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15</code>。</li>
+          <li><strong>8P折本</strong>（ワンシートZINE／マジック折）：1枚を8つに折って中央に切り込みを入れて作る簡易製本用の面付です。<strong>縦判のときのみ</strong>使え、<strong>8面付け・地図折り・ガチャポン本とは排他</strong>です。8ページを超える本文でも、16ページ単位の相対ページ位置で同じ並びを繰り返して割り付けます。面付順は <code>//開き</code> に連動し、右開き＝表 <code>1,8,7,6 / 2,3,4,5</code>・裏 <code>9,16,15,14 / 10,11,12,13</code>、左開き＝表 <code>6,7,8,1 / 5,4,3,2</code>・裏 <code>14,15,16,9 / 13,12,11,10</code>。</li>
+          <li><strong>ガチャポン本</strong>：超小型本向けの面付けです。ページ順は通常の<strong>16面付けと同じ</strong>です。各マス内に同じページを裁断枠いっぱいに縮尺して<strong>上下2つ</strong>置き、枠は綴じ側へ寄せます（A4比を保ち歪めません）。縦判の裁断は縦40mm×横28.2mm、横判は縦横入れ替え。背丁の文言は出しませんが、<strong>背のグレー線</strong>は従来の背丁位置に残し、本の天地・上下2冊の境ではトンボの延長と交差する位置に<strong>小さな隙間</strong>を空けてハサミの目印にします。裁断の外側に切り落としとトンボを付けますが、<strong>綴じ側のトンボは付けません</strong>。用紙の空きに<strong>A〜Fの目印と折り・裁ち手順</strong>（ステープラー→A・Bで切り離し→最後の２つ折り→C・D・Eで切り込み→Fで小口）を表示・印刷します。通常のA4などで作ったPDFを<strong>PDFを読み込む</strong>と各裁断枠にちょうど収まるよう配置します。<strong>8面付け・8P折本・地図折りとは排他</strong>です。</li>
           <li>一覧キャンセル＝破棄。外側クリックでは閉じない。台割上はDnD並べ替え等。</li>
         </ul>
         <h4>その他</h4>
@@ -351,6 +353,6 @@
       </div>
     </dialog>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=gacha-guide-f-20261027d"></script>
   </body>
 </html>

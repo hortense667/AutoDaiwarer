@@ -516,6 +516,7 @@ const state = {
     pdfScalePercent: 100,
     use8up: false,
     use8pBooklet: false,
+    useGachaBook: false,
     saddleStitch: false,
   },
   impositionPdf: {
@@ -525,6 +526,8 @@ const state = {
     orientation: "",
     imageByPageIndex: new Map(),
     spreadMode: false,
+    bytes: null,
+    pageSourceByIndex: null,
   },
 };
 
@@ -618,6 +621,7 @@ const els = {
   impositionUse8up: document.querySelector("#impositionUse8up"),
   impositionMapFoldInput: document.querySelector("#impositionMapFoldInput"),
   impositionUse8pBooklet: document.querySelector("#impositionUse8pBooklet"),
+  impositionUseGachaBook: document.querySelector("#impositionUseGachaBook"),
   impositionSaddleStitch: document.querySelector("#impositionSaddleStitch"),
   impositionExportSpreadPptxBtn: document.querySelector("#impositionExportSpreadPptxBtn"),
   impositionUpdateSpreadPptxBtn: document.querySelector("#impositionUpdateSpreadPptxBtn"),
@@ -2299,12 +2303,17 @@ function applyLocaleUI() {
   setText("label[for='impositionMapFoldInput']", "Map fold order (16 values)");
   if (els.impositionMapFoldInput) {
     els.impositionMapFoldInput.placeholder = "Example: 1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15";
-    els.impositionMapFoldInput.title = "Define your own map-fold layout (16-up only). Enter 1..16 once each, in slot order: first 8 = front, last 8 = back. Each face fills left to right, top row first (portrait 4x2, landscape 2x4). Each number is the page position inside the signature (1 = first page). Entering a value turns both 8-up and 8P fold booklet off.";
+    els.impositionMapFoldInput.title = "Define your own map-fold layout (16-up only). Enter 1..16 once each, in slot order: first 8 = front, last 8 = back. Each face fills left to right, top row first (portrait 4x2, landscape 2x4). Each number is the page position inside the signature (1 = first page). Entering a value turns 8-up, 8P fold booklet, and gacha book off.";
   }
   setCheckLabel(
     els.impositionUse8pBooklet,
     "8P Fold Booklet",
-    "For a one-sheet zine (magic fold) layout: fold one sheet into 8 and add a center slit to make a simple booklet imposition."
+    "For a one-sheet zine (magic fold) layout: fold one sheet into 8 and add a center slit to make a simple booklet imposition. Mutually exclusive with 8-up, map fold, and gacha book."
+  );
+  setCheckLabel(
+    els.impositionUseGachaBook,
+    "Gacha book",
+    "Same 16-up page order as usual. Inside each slot, scale the page to fill the trim (40×28.2mm, A4 aspect; landscape swaps) and stack it twice toward the binding edge. Spine text is omitted; the gray fold line remains with small gaps at cut positions (top, between the two copies, bottom) so crop-mark scissors guides stay clear. Crop marks omit the binding side. Load a normal-size PDF to place it in the trim frames. Mutually exclusive with 8-up, 8P fold booklet, and map fold."
   );
   setCheckLabel(
     els.impositionSaddleStitch,
@@ -2794,6 +2803,8 @@ function bindUI() {
     if (nextUse8up) {
       state.impositionOptions.use8pBooklet = false;
       if (els.impositionUse8pBooklet) els.impositionUse8pBooklet.checked = false;
+      state.impositionOptions.useGachaBook = false;
+      if (els.impositionUseGachaBook) els.impositionUseGachaBook.checked = false;
     }
     const currentPaperSize = normalizeImpositionPrintPaperSize(
       els.impositionPrintPaperSize?.value
@@ -2842,6 +2853,8 @@ function bindUI() {
       if (els.impositionUse8up) els.impositionUse8up.checked = false;
       state.impositionOptions.use8pBooklet = false;
       if (els.impositionUse8pBooklet) els.impositionUse8pBooklet.checked = false;
+      state.impositionOptions.useGachaBook = false;
+      if (els.impositionUseGachaBook) els.impositionUseGachaBook.checked = false;
       syncImpositionDialogInputsFromMeta();
     }
     void renderImpositionPreview();
@@ -2862,12 +2875,30 @@ function bindUI() {
     if (nextUse8pBooklet) {
       state.impositionOptions.use8up = false;
       if (els.impositionUse8up) els.impositionUse8up.checked = false;
+      state.impositionOptions.useGachaBook = false;
+      if (els.impositionUseGachaBook) els.impositionUseGachaBook.checked = false;
       state.impositionOptions.mapFoldText = "";
       if (els.impositionMapFoldInput) els.impositionMapFoldInput.value = "";
       syncImpositionDialogInputsFromMeta();
     }
     void renderImpositionPreview();
   });
+  els.impositionUseGachaBook?.addEventListener("change", () => {
+    const nextUseGachaBook = Boolean(els.impositionUseGachaBook?.checked);
+    state.impositionOptions.useGachaBook = nextUseGachaBook;
+    if (nextUseGachaBook) {
+      state.impositionOptions.use8up = false;
+      if (els.impositionUse8up) els.impositionUse8up.checked = false;
+      state.impositionOptions.use8pBooklet = false;
+      if (els.impositionUse8pBooklet) els.impositionUse8pBooklet.checked = false;
+      state.impositionOptions.mapFoldText = "";
+      if (els.impositionMapFoldInput) els.impositionMapFoldInput.value = "";
+      syncImpositionDialogInputsFromMeta();
+    }
+    updateImpositionPrintDriverNotice();
+    void renderImpositionPreview();
+  });
+
   els.impositionSaddleStitch?.addEventListener("change", () => {
     state.impositionOptions.saddleStitch = Boolean(els.impositionSaddleStitch?.checked);
     void renderImpositionPreview();
@@ -3388,7 +3419,17 @@ function syncImpositionDialogInputsFromMeta() {
 }
 
 function updateImpositionPrintDriverNotice() {
+  for (const el of [
+    els.impositionFrontColXMM,
+    els.impositionFrontRowYMM,
+    els.impositionBackColXMM,
+    els.impositionBackRowYMM,
+    els.impositionResetLayoutBtn,
+  ]) {
+    if (el) el.disabled = false;
+  }
   if (!els.impositionPrintDriverNotice) return;
+  // ガチャポン本の長文説明は出さない（A〜Fの手順枠で足りる）
   els.impositionPrintDriverNotice.hidden = true;
   els.impositionPrintDriverNotice.textContent = "";
 }
@@ -3502,9 +3543,15 @@ async function openImpositionDialog() {
   if (state.impositionOptions.use8pBooklet) {
     state.impositionOptions.use8up = false;
     state.impositionOptions.mapFoldText = "";
+    state.impositionOptions.useGachaBook = false;
   }
   if (state.impositionOptions.use8pBooklet && isHorizontalTrimSize(state.meta?.trimSize)) {
     state.impositionOptions.use8pBooklet = false;
+  }
+  if (state.impositionOptions.useGachaBook) {
+    state.impositionOptions.use8up = false;
+    state.impositionOptions.use8pBooklet = false;
+    state.impositionOptions.mapFoldText = "";
   }
   if (els.impositionBoardInput) {
     els.impositionBoardInput.value = state.impositionOptions.targetText || "";
@@ -3520,6 +3567,9 @@ async function openImpositionDialog() {
   }
   if (els.impositionUse8pBooklet) {
     els.impositionUse8pBooklet.checked = Boolean(state.impositionOptions.use8pBooklet);
+  }
+  if (els.impositionUseGachaBook) {
+    els.impositionUseGachaBook.checked = Boolean(state.impositionOptions.useGachaBook);
   }
   if (els.impositionSaddleStitch) {
     els.impositionSaddleStitch.checked = Boolean(state.impositionOptions.saddleStitch);
@@ -3566,9 +3616,11 @@ async function printImpositionSimulation() {
           );
         }
         const horizontalTrim = isHorizontalTrimSize(state.meta?.trimSize);
-        const use8pBooklet = Boolean(state.impositionOptions.use8pBooklet);
+        const useGachaBook = Boolean(state.impositionOptions.useGachaBook);
+        const use8pBooklet = Boolean(state.impositionOptions.use8pBooklet) && !useGachaBook;
         const use8up = Boolean(state.impositionOptions.use8up)
           && !use8pBooklet
+          && !useGachaBook
           && !hasImpositionMapFoldText(state.impositionOptions.mapFoldText);
         const ip = getImpositionPrintLayoutForCurrentMode(state.meta, use8up);
         const pageLayout = resolveImpositionPrintPageLayout(
@@ -3693,7 +3745,8 @@ async function buildImpositionRenderResult(buildOptions = {}) {
   const selected = parseImpositionBoardSelection(state.impositionOptions.targetText, context.boardNos);
   if (selected.error) return { error: selected.error, warning: "", html: "", sheets: [] };
   const horizontalTrim = isHorizontalTrimSize(state.meta?.trimSize);
-  const use8pBooklet = Boolean(state.impositionOptions.use8pBooklet);
+  const useGachaBook = Boolean(state.impositionOptions.useGachaBook);
+  const use8pBooklet = Boolean(state.impositionOptions.use8pBooklet) && !useGachaBook;
   if (use8pBooklet && horizontalTrim) {
     return {
       error: LOCALE === "en" ? "8P fold booklet is available only for portrait trim." : "8P折本は縦判のときだけ使えます。",
@@ -3702,9 +3755,27 @@ async function buildImpositionRenderResult(buildOptions = {}) {
       sheets: [],
     };
   }
-  const mapFoldSpec = parseImpositionMapFoldSpec(state.impositionOptions.mapFoldText, horizontalTrim);
+  const mapFoldSpec = useGachaBook
+    ? { active: false, error: "", order: [], frontMap: [], backMap: [] }
+    : parseImpositionMapFoldSpec(state.impositionOptions.mapFoldText, horizontalTrim);
   if (mapFoldSpec.error) return { error: mapFoldSpec.error, warning: "", html: "", sheets: [] };
-  const use8up = Boolean(state.impositionOptions.use8up) && !mapFoldSpec.active && !use8pBooklet;
+  const use8up = Boolean(state.impositionOptions.use8up) && !mapFoldSpec.active && !use8pBooklet && !useGachaBook;
+  if (useGachaBook) {
+    const probeIp = getImpositionPrintLayoutForCurrentMode(state.meta, false);
+    const probeShape = getImpositionGridShape(false, horizontalTrim);
+    const probeGeom = resolveImpositionSheetGeometry(probeIp, {
+      use8up: false,
+      useGachaBook: true,
+      horizontalTrim,
+      colCount: probeShape.cols,
+      rowCount: probeShape.rows,
+      sideKind: "front",
+    });
+    if (probeGeom.gacha?.error) {
+      return { error: probeGeom.gacha.error, warning: "", html: "", sheets: [] };
+    }
+  }
+
   const ipRaw = getImpositionPrintLayoutForCurrentMode(state.meta, use8up);
   const ip = ensureImpositionPrintLayoutPositions(ipRaw);
   const sheetCollector = buildOptions.collectSheets ? [] : null;
@@ -3717,6 +3788,7 @@ async function buildImpositionRenderResult(buildOptions = {}) {
     saddleStitch: Boolean(state.impositionOptions.saddleStitch),
     horizontalTrim,
     use8pBooklet,
+    useGachaBook,
     openingCanon: normalizeOpeningCanon(state.meta?.opening),
     mapFoldSpec: mapFoldSpec.active ? mapFoldSpec : null,
     spineCounter: { n: 1 },
@@ -4165,9 +4237,11 @@ function renderImpositionSidePageHtml(boardLabel, sideLabel, rows, halfMode, sid
       showPageLabel: Boolean(options.showPageLabel),
       spineFixedNo: options.spineFixedNo,
       use8up: Boolean(options.use8up),
+      useGachaBook: Boolean(options.useGachaBook),
       horizontalTrim: Boolean(options.horizontalTrim),
       forceAllUpsideDown,
       forceNoUpsideDown,
+
       halfMode: Boolean(halfMode),
       rows: (rows || []).map((row) => (Array.isArray(row) ? row.map((slot) => {
         if (!slot) return null;
@@ -4177,6 +4251,7 @@ function renderImpositionSidePageHtml(boardLabel, sideLabel, rows, halfMode, sid
           pdfImage: String(slot.pdfImage || ""),
           seq: slot.seq,
           impositionSeq: slot.impositionSeq,
+          sourcePageIndex: Number(slot.sourcePageIndex) || 0,
         };
       }) : [])),
     });
@@ -4190,6 +4265,15 @@ function renderImpositionSidePageHtml(boardLabel, sideLabel, rows, halfMode, sid
 
 function resolveImpositionMapsForBoard(pageCount, opening = "left", options = {}) {
   const canonOpening = normalizeOpeningCanon(options.openingCanon || opening);
+  if (options.useGachaBook) {
+    if (options.horizontalTrim) {
+      const horizMaps = IMPOSITION_MAPS_16_HORIZONTAL_BY_OPENING[canonOpening]
+        || IMPOSITION_MAPS_16_HORIZONTAL_BY_OPENING.left;
+      return { frontMap: horizMaps.front, backMap: horizMaps.back, halfMode: false };
+    }
+    const maps = IMPOSITION_MAPS_BY_OPENING[canonOpening] || IMPOSITION_MAPS_BY_OPENING.left;
+    return { frontMap: maps.front, backMap: maps.back, halfMode: false };
+  }
   if (options.use8pBooklet) {
     const bookletMaps = IMPOSITION_8P_BOOKLET_MAP_BY_OPENING[canonOpening] || IMPOSITION_8P_BOOKLET_MAP_BY_OPENING.left;
     return { frontMap: bookletMaps.front, backMap: bookletMaps.back, halfMode: false };
@@ -4337,6 +4421,7 @@ function renderImpositionGridHtml(rows, options = {}, layoutFlags = {}) {
   const sideKind = String(layoutFlags.sideKind || "front");
   const geometry = resolveImpositionSheetGeometry(ip, {
     use8up: Boolean(options.use8up),
+    useGachaBook: Boolean(options.useGachaBook),
     horizontalTrim: Boolean(options.horizontalTrim),
     colCount,
     rowCount,
@@ -4345,6 +4430,7 @@ function renderImpositionGridHtml(rows, options = {}, layoutFlags = {}) {
   const spineCandidates = signatureSize <= 8
     ? [[1, 8]]
     : [[1, 16]];
+  // ガチャポン本では背丁文言は不要だが、背のグレー線は従来どおり折位置に出す。
   const spinePlacement = options.spineCounter && sideKind === "front"
     ? findImpositionSpineAdjacencyByCandidates(rows, spineCandidates)
     : null;
@@ -4354,6 +4440,7 @@ function renderImpositionGridHtml(rows, options = {}, layoutFlags = {}) {
   const cellH = geometry.cellHeightMm;
   const colX = geometry.colXMM;
   const rowY = geometry.rowYMM;
+  const gacha = geometry.gacha && !geometry.gacha.error ? geometry.gacha : null;
   const body = rows.map((row, rowIdx) => {
     const cells = row.map((slot, colIdx) => {
       const leftPct = ((Number(colX[colIdx]) || 0) / paperW) * 100;
@@ -4368,38 +4455,72 @@ function renderImpositionGridHtml(rows, options = {}, layoutFlags = {}) {
       }
       const showTextMeta = !(hasPdf);
       const upside = isImpositionRowUpsideDown(rowIdx, rowCount, options);
+      const foot = showPageLabel
+        ? `<div class="imposition-slot-foot">${escapeHtml(formatImpositionFolioFootLabel(slot.pageNo))}</div>`
+        : "";
+      let inner;
+      if (gacha) {
+        const styles = gachaContentStyleListInSlot(gacha, slot, cellW, cellH);
+        inner = styles.map((st) => (
+          `<div class="imposition-gacha-content" style="${st}">
+            ${showTextMeta ? `<div class="imposition-slot-title">${escapeHtml(slot.title || "")}</div>` : ""}
+            ${slot.pdfImage ? `<img class="imposition-slot-pdf" src="${slot.pdfImage}" alt="PDF page preview" />` : ""}
+            ${foot}
+          </div>`
+        )).join("");
+      } else {
+        inner = `${showTextMeta ? `<div class="imposition-slot-title">${escapeHtml(slot.title || "")}</div>` : ""}
+          ${slot.pdfImage ? `<div class="imposition-slot-pdf-wrap"><img class="imposition-slot-pdf" src="${slot.pdfImage}" alt="PDF page preview" /></div>` : ""}
+          ${foot}`;
+      }
       return `<div class="imposition-slot${upside ? " is-upside-down" : ""}" style="${slotStyle}">
         <div class="imposition-slot-inner ${slot.pdfImage ? "has-pdf" : ""}">
-          ${showTextMeta ? `<div class="imposition-slot-title">${escapeHtml(slot.title || "")}</div>` : ""}
-          ${slot.pdfImage ? `<div class="imposition-slot-pdf-wrap"><img class="imposition-slot-pdf" src="${slot.pdfImage}" alt="PDF page preview" /></div>` : ""}
-          ${showPageLabel ? `<div class="imposition-slot-foot">${escapeHtml(formatImpositionFolioFootLabel(slot.pageNo))}</div>` : ""}
+          ${inner}
         </div>
       </div>`;
     }).join("");
     return cells;
   }).join("");
+  let marksHtml = "";
+  if (gacha) {
+    const lines = gachaCropSegmentsMm(geometry, rows, options)
+      .map((seg) => `<line x1="${seg[0]}" y1="${seg[1]}" x2="${seg[2]}" y2="${seg[3]}" />`)
+      .join("");
+    // A〜Fは1枚目（最初の折の表面）かつ、いちばん外側の1ページ目背丁付近のみ
+    const showAssemblyGuide = sideKind === "front" && Number(options.spineFixedNo) === 1;
+    const guide = showAssemblyGuide
+      ? resolveGachaAssemblyGuide(geometry, rows, options)
+      : null;
+    const guideSvg = renderGachaAssemblyGuideSvg(guide);
+    marksHtml = `<svg class="imposition-gacha-marks" viewBox="0 0 ${paperW} ${paperH}" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke="#111" stroke-width="0.25" stroke-linecap="square">${lines}</g>${guideSvg}</svg>`;
+  }
   let spineHtml = "";
   if (spinePlacement) {
-    spineHtml = renderImpositionSpineMarkElementAbsolute(spinePlacement, options, geometry);
+    spineHtml = renderImpositionSpineMarkElementAbsolute(
+      spinePlacement,
+      { ...options, spineLineOnly: Boolean(options.useGachaBook) },
+      geometry,
+    );
   }
-  return `<div class="imposition-grid abs-mode ${hasPdf ? "pdf-mode" : ""} ${layoutFlags.rotateWhole ? "rotate-whole-180" : ""}" style="--imposition-pdf-scale:${pdfScale};--imposition-pdf-print-size:${pdfPrintSize};--imposition-grid-cols:${colCount};--imposition-paper-w:${paperW};--imposition-paper-h:${paperH};aspect-ratio:${paperW} / ${paperH};">${body}${spineHtml}</div>`;
+  return `<div class="imposition-grid abs-mode ${gacha ? "is-gacha" : ""} ${hasPdf ? "pdf-mode" : ""} ${layoutFlags.rotateWhole ? "rotate-whole-180" : ""}" style="--imposition-pdf-scale:${pdfScale};--imposition-pdf-print-size:${pdfPrintSize};--imposition-grid-cols:${colCount};--imposition-paper-w:${paperW};--imposition-paper-h:${paperH};aspect-ratio:${paperW} / ${paperH};">${body}${spineHtml}${marksHtml}</div>`;
 }
 
 function renderImpositionSpineMarkElementAbsolute(placement, options, geometry) {
   if (!placement || !options?.spineCounter) return "";
+  const lineOnly = Boolean(options.spineLineOnly);
   let foldNo = Number(options.spineFixedNo);
   if (!Number.isFinite(foldNo) || foldNo < 1) {
     const counter = options.spineCounter;
     foldNo = Number(counter.n) || 1;
-    counter.n += 1;
+    if (!lineOnly) counter.n += 1;
   }
   const titleShort = getImpositionSpineTitleShort(state.meta);
   const verticalText = placement.kind === "between-cols";
-  const modeClass = verticalText ? "imposition-spine-portrait" : "imposition-spine-landscape";
+  const modeClass = `${verticalText ? "imposition-spine-portrait" : "imposition-spine-landscape"}${lineOnly ? " is-line-only" : ""}`;
   const titleEsc = escapeHtml(titleShort);
   const foldEsc = escapeHtml(`《${foldNo}》`);
-  const titleAttrEsc = escapeHtml(`${titleShort} 《${foldNo}》`);
-  const inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span><span class="imposition-spine-fold-text">${foldEsc}</span></span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
+  const titleAttrEsc = escapeHtml(lineOnly ? (LOCALE === "en" ? "Spine fold" : "背の折り位置") : `${titleShort} 《${foldNo}》`);
+  const gacha = geometry?.gacha && !geometry.gacha.error ? geometry.gacha : null;
   const paperW = geometry.pageWidthMm;
   const paperH = geometry.pageHeightMm;
   const cellW = geometry.cellWidthMm;
@@ -4416,8 +4537,27 @@ function renderImpositionSpineMarkElementAbsolute(placement, options, geometry) 
     const leftPct = (midX / paperW) * 100;
     const topPct = (top / paperH) * 100;
     const heightPct = (cellH / paperH) * 100;
-    return `<div class="imposition-spine-mark imposition-spine-between-cols abs-pos ${modeClass}" style="left:${leftPct.toFixed(4)}%;top:${topPct.toFixed(4)}%;height:${heightPct.toFixed(4)}%;" title="${titleAttrEsc}">${inner}</div>`;
+    let inner;
+    let gapClass = "";
+    if (lineOnly && gacha) {
+      // 裁断トンボ（本の天地・上下2冊の境）とクロスする位置でグレー線に隙間を空ける
+      const segs = gachaSplitLineByCutGaps(0, cellH, gachaSpineCutYsInCellMm(gacha), GACHA_SPINE_CUT_GAP_MM);
+      gapClass = " is-gacha-cut-gaps";
+      inner = segs.map(([a, b]) => {
+        const segTop = (a / cellH) * 100;
+        const segH = ((b - a) / cellH) * 100;
+        return `<span class="imposition-spine-line imposition-spine-line-seg is-gacha-cut-gap-seg" style="top:${segTop.toFixed(4)}%;height:${segH.toFixed(4)}%;" aria-hidden="true"></span>`;
+      }).join("");
+    } else if (lineOnly) {
+      inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
+    } else {
+      inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span><span class="imposition-spine-fold-text">${foldEsc}</span></span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
+    }
+    return `<div class="imposition-spine-mark imposition-spine-between-cols abs-pos ${modeClass}${gapClass}" style="left:${leftPct.toFixed(4)}%;top:${topPct.toFixed(4)}%;height:${heightPct.toFixed(4)}%;" title="${titleAttrEsc}">${inner}</div>`;
   }
+  const inner = lineOnly
+    ? `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`
+    : `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span><span class="imposition-spine-fold-text">${foldEsc}</span></span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
   const c = Number(placement.c);
   const upper = Number(placement.upperRow);
   const y0 = Number(rowY[upper]) || 0;
@@ -4514,6 +4654,629 @@ function getImpositionGridShape(use8up, horizontalTrim) {
   if (use8up) return { cols: 2, rows: 2 };
   if (horizontalTrim) return { cols: 2, rows: 4 };
   return { cols: 4, rows: 2 };
+}
+
+// ガチャポン本。通常の16面付けと同じマス配置のまま、各マス内に
+// 同じページを縮尺して上下2つ・綴じ側寄せで置く。
+// 縦判の裁断（＝PDF配置枠）は縦40mm×横28.2mm（A4比・歪めない）。横判は縦横入れ替え。
+const GACHA_BLEED_MM = 3;
+const GACHA_CROP_MM = 4;
+const GACHA_STACK = 2;
+// 背のグレー線と裁断トンボが交差する位置（本の天地・上下2冊の境）に空ける隙間（片側mm）
+const GACHA_SPINE_CUT_GAP_MM = 1.1;
+
+function gachaFinishedSpec(horizontalTrim) {
+  // A4比を維持（引き伸ばし歪みを防ぐ）
+  if (horizontalTrim) {
+    return { trimW: 40, trimH: 28.2 };
+  }
+  return { trimW: 28.2, trimH: 40 };
+}
+
+function gachaBindLeft(opening, slot) {
+  const seq = Number(slot?.impositionSeq ?? slot?.seq) || 1;
+  const openingCanon = normalizeOpeningCanon(opening);
+  // 左開き：奇数ページの左辺が綴じ。右開き：奇数ページの右辺が綴じ。
+  return (seq % 2 === 1) === (openingCanon !== "right");
+}
+
+function resolveGachaImpositionLayout(cellW, cellH, horizontalTrim, openingCanon) {
+  const spec = gachaFinishedSpec(horizontalTrim);
+  const { trimW, trimH } = spec;
+  // PDF枠＝裁断枠（A4比のまま。アスペクトを崩さない）
+  const contentW = trimW;
+  const contentH = trimH;
+  const opening = normalizeOpeningCanon(openingCanon || state.meta?.opening);
+  const tooSmall = LOCALE === "en"
+    ? "Each imposition slot is too small for two gacha-book pages. Choose a larger print paper size."
+    : "面付けマスが小さすぎてガチャポン本を上下2つ置けません。印刷判型を大きくしてください。";
+  if (!(cellW > 0) || !(cellH > 0) || cellW + 0.05 < trimW || cellH + 0.05 < trimH * GACHA_STACK) {
+    return { error: tooSmall };
+  }
+  const slackY = cellH - trimH * GACHA_STACK;
+  const trimOffY0 = Math.round((slackY / 2) * 1000) / 1000;
+  const outerRoomX = Math.max(0, cellW - trimW);
+  const bleed = Math.min(GACHA_BLEED_MM, Math.max(1.5, Math.min(3, outerRoomX * 0.35 + 1)));
+  const crop = Math.min(GACHA_CROP_MM, Math.max(2, Math.min(GACHA_CROP_MM, outerRoomX * 0.4 + 2)));
+  return {
+    error: "",
+    trimW,
+    trimH,
+    contentW,
+    contentH,
+    opening,
+    stackCount: GACHA_STACK,
+    trimOffY0,
+    contentOffY: 0,
+    bleed,
+    crop,
+  };
+}
+
+function gachaTrimOffXMm(gacha, slot, cellW) {
+  const cw = Number(cellW) || 0;
+  // 裁断枠はマス内で綴じ側へ寄せる（小口側にトンボ余地）。
+  if (gachaBindLeft(gacha.opening, slot)) return 0;
+  return Math.round((cw - gacha.trimW) * 1000) / 1000;
+}
+
+/** マス内の裁断Y（本の上・上下2冊の境・本の下）。背グレー線の隙間位置に使う。 */
+function gachaSpineCutYsInCellMm(gacha) {
+  if (!gacha || gacha.error) return [];
+  const stackCount = Math.max(1, Number(gacha.stackCount) || GACHA_STACK);
+  const y0 = Number(gacha.trimOffY0) || 0;
+  const trimH = Number(gacha.trimH) || 0;
+  if (!(trimH > 0)) return [];
+  const out = [];
+  for (let i = 0; i <= stackCount; i += 1) out.push(y0 + i * trimH);
+  return out;
+}
+
+/** [start,end] の線を、cutCenters の位置で gapHalf ずつ空けて分割する。 */
+function gachaSplitLineByCutGaps(start, end, cutCenters, gapHalf) {
+  const a0 = Number(start);
+  const a1 = Number(end);
+  const half = Math.max(0.4, Number(gapHalf) || 0);
+  if (!(Number.isFinite(a0) && Number.isFinite(a1)) || a1 <= a0 + 0.2) return [];
+  const cuts = (Array.isArray(cutCenters) ? cutCenters : [])
+    .map((y) => Number(y))
+    .filter((y) => Number.isFinite(y) && y > a0 + 0.15 && y < a1 - 0.15)
+    .sort((x, y) => x - y);
+  const segs = [];
+  let cursor = a0;
+  for (const y of cuts) {
+    const gapStart = y - half;
+    const gapEnd = y + half;
+    if (gapStart > cursor + 0.12) segs.push([cursor, Math.min(gapStart, a1)]);
+    cursor = Math.max(cursor, gapEnd);
+  }
+  if (a1 > cursor + 0.12) segs.push([cursor, a1]);
+  return segs;
+}
+
+function gachaContentOffXMm(gacha, slot) {
+  if (gachaBindLeft(gacha.opening, slot)) return 0;
+  return Math.round((gacha.trimW - gacha.contentW) * 1000) / 1000;
+}
+
+function gachaReflectBoxInCell(box, cellX, cellY, cellW, cellH) {
+  return {
+    x: cellX + (cellW - (box.x - cellX) - box.w),
+    y: cellY + (cellH - (box.y - cellY) - box.h),
+    w: box.w,
+    h: box.h,
+  };
+}
+
+function gachaTrimBoxesInCellMm(cellX, cellY, cellW, gacha, slot) {
+  const ox = gachaTrimOffXMm(gacha, slot, cellW);
+  const out = [];
+  for (let i = 0; i < gacha.stackCount; i += 1) {
+    out.push({
+      x: cellX + ox,
+      y: cellY + gacha.trimOffY0 + i * gacha.trimH,
+      w: gacha.trimW,
+      h: gacha.trimH,
+    });
+  }
+  return out;
+}
+
+function gachaContentBoxesInCellMm(cellX, cellY, cellW, gacha, slot) {
+  // PDFは「綴じ側〜裁断枠」＝裁断長方形そのものに左右ピッタリ貼る。
+  if (
+    Math.abs((Number(gacha.contentW) || 0) - (Number(gacha.trimW) || 0)) < 0.001
+    && Math.abs((Number(gacha.contentH) || 0) - (Number(gacha.trimH) || 0)) < 0.001
+  ) {
+    return gachaTrimBoxesInCellMm(cellX, cellY, cellW, gacha, slot);
+  }
+  const trimOx = gachaTrimOffXMm(gacha, slot, cellW);
+  const cox = gachaContentOffXMm(gacha, slot);
+  const coy = gacha.contentOffY;
+  const out = [];
+  for (let i = 0; i < gacha.stackCount; i += 1) {
+    out.push({
+      x: cellX + trimOx + cox,
+      y: cellY + gacha.trimOffY0 + i * gacha.trimH + coy,
+      w: gacha.contentW,
+      h: gacha.contentH,
+    });
+  }
+  return out;
+}
+
+function gachaContentStyleListInSlot(gacha, slot, cellW, cellH) {
+  const boxes = gachaContentBoxesInCellMm(0, 0, cellW, gacha, slot);
+  return boxes.map((box) => (
+    `left:${((box.x / cellW) * 100).toFixed(4)}%;`
+    + `top:${((box.y / cellH) * 100).toFixed(4)}%;`
+    + `width:${((box.w / cellW) * 100).toFixed(4)}%;`
+    + `height:${((box.h / cellH) * 100).toFixed(4)}%;`
+  ));
+}
+
+function gachaCollectVisualTrimBoxes(geometry, rows, options = {}) {
+  const gacha = geometry?.gacha;
+  if (!gacha || gacha.error) return [];
+  const cellW = geometry.cellWidthMm;
+  const cellH = geometry.cellHeightMm;
+  const colX = geometry.colXMM || [];
+  const rowY = geometry.rowYMM || [];
+  const rowCount = Math.max(1, (rows || []).length);
+  const stackCount = Math.max(1, Number(gacha.stackCount) || GACHA_STACK);
+  const out = [];
+  for (let r = 0; r < rowCount; r += 1) {
+    const row = Array.isArray(rows[r]) ? rows[r] : [];
+    const upside = isImpositionRowUpsideDown(r, rowCount, options);
+    const cellY = Number(rowY[r]) || 0;
+    for (let c = 0; c < row.length; c += 1) {
+      const slot = row[c];
+      if (!slot) continue;
+      const cellX = Number(colX[c]) || 0;
+      const bindLeft = gachaBindLeft(gacha.opening, slot);
+      let boxes = gachaTrimBoxesInCellMm(cellX, cellY, cellW, gacha, slot);
+      boxes = boxes.map((box, stackIndex) => {
+        // 天地逆のマスでは左右も反転するため、見た目上の綴じ側も入れ替える。
+        const visual = upside
+          ? gachaReflectBoxInCell(box, cellX, cellY, cellW, cellH)
+          : box;
+        const visualStackIndex = upside ? (stackCount - 1 - stackIndex) : stackIndex;
+        return {
+          ...visual,
+          bindLeft: upside ? !bindLeft : bindLeft,
+          stackIndex: visualStackIndex,
+          stackCount,
+        };
+      });
+      out.push(...boxes);
+    }
+  }
+  return out;
+}
+
+function gachaCropSegmentsFromTrimBoxes(trimBoxes, gacha) {
+  if (!gacha || !Array.isArray(trimBoxes) || trimBoxes.length === 0) return [];
+  const bleed = gacha.bleed;
+  const crop = gacha.crop;
+  const segs = [];
+  for (const box of trimBoxes) {
+    const left = box.x;
+    const top = box.y;
+    const right = box.x + box.w;
+    const bottom = box.y + box.h;
+    const omitLeft = box.bindLeft === true;
+    const omitRight = box.bindLeft === false;
+    const stackIndex = Number(box.stackIndex);
+    const stackCount = Math.max(1, Number(box.stackCount) || GACHA_STACK);
+    // 上下2つ置きの接合辺へ突き出す縦トンボは付けない。
+    const omitTopJoin = Number.isFinite(stackIndex) && stackIndex > 0;
+    const omitBottomJoin = Number.isFinite(stackIndex) && stackIndex < stackCount - 1;
+    // 綴じ側（背）の辺には縦・横ともトンボを付けない（赤丸）。外側のみ残す。
+    const vertXs = [];
+    if (!omitLeft) vertXs.push(left);
+    if (!omitRight) vertXs.push(right);
+    for (const x of vertXs) {
+      if (!omitTopJoin) segs.push([x, top - bleed - crop, x, top - bleed]);
+      if (!omitBottomJoin) segs.push([x, bottom + bleed, x, bottom + bleed + crop]);
+    }
+    const ys = [top, bottom];
+    for (const y of ys) {
+      if (!omitLeft) segs.push([left - bleed - crop, y, left - bleed, y]);
+      if (!omitRight) segs.push([right + bleed, y, right + bleed + crop, y]);
+    }
+  }
+  return segs;
+}
+
+function gachaCropSegmentsMm(geometry, rows, options = {}) {
+  return gachaCropSegmentsFromTrimBoxes(
+    gachaCollectVisualTrimBoxes(geometry, rows, options),
+    geometry?.gacha,
+  );
+}
+
+function gachaAssemblyGuideCopy() {
+  if (LOCALE === "en") {
+    return {
+      title: "Gacha book",
+      steps: [
+        "1. Staple before the last double fold",
+        "2. Trim A/B (head/foot); separate books",
+        "3. Last double fold",
+        "4. Slit C/D/E from spine to marks",
+        "5. Trim fore edge at F",
+      ],
+    };
+  }
+  return {
+    title: "ガチャポン本",
+    steps: [
+      "1. 最後の２つ折り前にステープラー",
+      "2. A・Bで天地を裁ち切り離し",
+      "3. 最後の２つ折り",
+      "4. 綴じ側からC・D・Eを切り込み",
+      "5. Fで小口を裁つ",
+    ],
+  };
+}
+
+/** 1ページ目が乗る背丁（1–16 / 1–8）のマス座標を返す */
+function findGachaPage1SpineCellCoords(rows) {
+  const spine = findImpositionSpineAdjacencyByCandidates(rows, [[1, 16], [1, 8]]);
+  if (!spine) return null;
+  const coords = [];
+  if (spine.kind === "between-cols") {
+    const r = Number(spine.row);
+    const k = Number(spine.k);
+    coords.push({ r, c: k }, { r, c: k + 1 });
+  } else if (spine.kind === "between-rows") {
+    const c = Number(spine.c);
+    const u = Number(spine.upperRow);
+    coords.push({ r: u, c }, { r: u + 1, c });
+  }
+  // 1ページ目が含まれるか確認
+  let hasPage1 = false;
+  for (const { r, c } of coords) {
+    const slot = rows?.[r]?.[c];
+    const seq = Number(slot?.impositionSeq ?? slot?.seq);
+    if (seq === 1) hasPage1 = true;
+  }
+  if (!hasPage1) return null;
+  return { spine, coords };
+}
+
+/**
+ * ガチャポン本の A〜F 目印と手順テキストの配置。
+ * 1枚目の表面のみ・いちばん外側の1ページ目背丁（1と16/8の隣接）付近に限定。
+ * A/B=天・地トンボの外側、C/D/E=小口側の切り込み高さ、F=小口縦トンボ×B横線（右下コーナー）。
+ */
+function resolveGachaAssemblyGuide(geometry, rows, options = {}) {
+  const gacha = geometry?.gacha;
+  if (!gacha || gacha.error) return null;
+  const paperW = Number(geometry.pageWidthMm) || 0;
+  const paperH = Number(geometry.pageHeightMm) || 0;
+  if (!(paperW > 0) || !(paperH > 0)) return null;
+  const page1Spine = findGachaPage1SpineCellCoords(rows);
+  if (!page1Spine) return null;
+  const cellW = Number(geometry.cellWidthMm) || 0;
+  const cellH = Number(geometry.cellHeightMm) || 0;
+  const colX = geometry.colXMM || [];
+  const rowY = geometry.rowYMM || [];
+  const rowCount = Math.max(1, (rows || []).length);
+  // 1–16（または1–8）の2マス分の裁断枠だけを対象にする
+  const refBoxes = [];
+  for (const { r, c } of page1Spine.coords) {
+    const row = Array.isArray(rows[r]) ? rows[r] : [];
+    const slot = row[c];
+    if (!slot) continue;
+    const cellX = Number(colX[c]) || 0;
+    const cellY = Number(rowY[r]) || 0;
+    const upside = isImpositionRowUpsideDown(r, rowCount, options);
+    const bindLeft = gachaBindLeft(gacha.opening, slot);
+    let boxes = gachaTrimBoxesInCellMm(cellX, cellY, cellW, gacha, slot);
+    boxes = boxes.map((box, stackIndex) => {
+      const visual = upside ? gachaReflectBoxInCell(box, cellX, cellY, cellW, cellH) : box;
+      const stackCount = Math.max(1, Number(gacha.stackCount) || GACHA_STACK);
+      const visualStackIndex = upside ? (stackCount - 1 - stackIndex) : stackIndex;
+      return {
+        ...visual,
+        bindLeft: upside ? !bindLeft : bindLeft,
+        stackIndex: visualStackIndex,
+        stackCount,
+      };
+    });
+    refBoxes.push(...boxes);
+  }
+  if (refBoxes.length === 0) return null;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let leftOuterX = Infinity;
+  let rightOuterX = -Infinity;
+  for (const b of refBoxes) {
+    minY = Math.min(minY, b.y);
+    maxY = Math.max(maxY, b.y + b.h);
+    leftOuterX = Math.min(leftOuterX, b.x);
+    rightOuterX = Math.max(rightOuterX, b.x + b.w);
+  }
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return null;
+  const midY = (minY + maxY) / 2;
+  const bleed = Number(gacha.bleed) || GACHA_BLEED_MM;
+  const crop = Number(gacha.crop) || GACHA_CROP_MM;
+  const tick = Math.min(5, Math.max(3, crop));
+  const labelOff = tick + 1.8;
+  // 参照マーカーどおり：C/D/E/F は 1–16 背丁ブロックの右小口側
+  const foreX = rightOuterX;
+  // A = 天トンボの上、B = 地トンボの下
+  const yA = minY - bleed - crop;
+  const yB = maxY + bleed + crop;
+  const lineLeft = leftOuterX - bleed;
+  const lineRight = rightOuterX + bleed;
+  const cutYs = [minY, midY, maxY];
+  const labels = [];
+  labels.push({
+    id: "A",
+    x: lineRight + labelOff,
+    y: yA,
+    anchor: "start",
+    tick: [lineLeft, yA, lineRight, yA],
+  });
+  labels.push({
+    id: "B",
+    x: lineRight + labelOff,
+    y: yB,
+    anchor: "start",
+    tick: [lineLeft, yB, lineRight, yB],
+  });
+  const cdeIds = ["C", "D", "E"];
+  for (let i = 0; i < 3; i += 1) {
+    const y = cutYs[i];
+    const tickX0 = foreX + bleed;
+    const tickX1 = foreX + bleed + tick;
+    labels.push({
+      id: cdeIds[i],
+      x: tickX1 + 1.4,
+      y,
+      anchor: "start",
+      tick: [tickX0, y, tickX1, y],
+    });
+  }
+  // F：Bの横線のすぐ下・小口縦トンボ上（赤丸位置）。+1.55mm からさらに約3px分下げる
+  labels.push({
+    id: "F",
+    x: foreX,
+    y: yB + 2.55,
+    anchor: "middle",
+    tick: [foreX, maxY + bleed, foreX, maxY + bleed + crop],
+  });
+
+  const copy = gachaAssemblyGuideCopy();
+  // マス全体の外・紙幅の中央。文言が枠内に収まるよう幅を自動計算。
+  let gridLeft = Infinity;
+  let gridRight = -Infinity;
+  let gridTop = Infinity;
+  let gridBottom = -Infinity;
+  for (let r = 0; r < rowCount; r += 1) {
+    const row = Array.isArray(rows[r]) ? rows[r] : [];
+    for (let c = 0; c < row.length; c += 1) {
+      if (!row[c]) continue;
+      const x = Number(colX[c]) || 0;
+      const y = Number(rowY[r]) || 0;
+      gridLeft = Math.min(gridLeft, x);
+      gridRight = Math.max(gridRight, x + cellW);
+      gridTop = Math.min(gridTop, y);
+      gridBottom = Math.max(gridBottom, y + cellH);
+    }
+  }
+  if (!Number.isFinite(gridLeft)) {
+    gridLeft = leftOuterX;
+    gridRight = rightOuterX;
+    gridTop = minY;
+    gridBottom = maxY;
+  }
+  const pad = 1.2;
+  const lineH = 2.7;
+  const lines = [copy.title, ...(copy.steps || [])];
+  // 日本語はやや広め、英数字は狭めに見積もって枠幅を決める（SVG実寸より余白多め）
+  let maxChars = 0;
+  for (const t of lines) {
+    let w = 0;
+    for (const ch of String(t)) {
+      w += /[^\x00-\xff]/.test(ch) ? 1 : 0.6;
+    }
+    if (w > maxChars) maxChars = w;
+  }
+  const charMm = 2.05;
+  const legendPadX = 3.2;
+  let legendW = Math.ceil((maxChars * charMm + legendPadX) * 10) / 10;
+  // 紙の左右余白だけ守り、文字幅より枠を狭くしない
+  legendW = Math.min(Math.max(legendW, 42), Math.max(24, paperW - pad * 2));
+  let legendH = lines.length * lineH + 3.4;
+  const topRoom = gridTop;
+  const bottomRoom = paperH - gridBottom;
+  let midGapTop = 0;
+  let midGapBottom = 0;
+  let midGap = 0;
+  if (rowCount >= 2) {
+    for (let r = 0; r < rowCount - 1; r += 1) {
+      const y0 = (Number(rowY[r]) || 0) + cellH;
+      const y1 = Number(rowY[r + 1]) || 0;
+      const gap = y1 - y0;
+      if (gap > midGap) {
+        midGap = gap;
+        midGapTop = y0;
+        midGapBottom = y1;
+      }
+    }
+  }
+  let legendX = (paperW - legendW) / 2;
+  let legendY = pad;
+  if (topRoom >= legendH + pad * 2) {
+    legendY = Math.max(pad * 0.5, (topRoom - legendH) / 2);
+  } else if (midGap >= legendH + pad * 2) {
+    legendY = midGapTop + (midGap - legendH) / 2;
+  } else if (bottomRoom >= legendH + pad * 2) {
+    legendY = gridBottom + Math.max(pad, (bottomRoom - legendH) / 2);
+  } else {
+    // 余白不足でも説明文は切らない（枠高は維持し、いちばん広い帯へ寄せる）
+    const bestRoom = Math.max(topRoom, bottomRoom, midGap);
+    if (bestRoom === topRoom) legendY = pad * 0.4;
+    else if (bestRoom === midGap) legendY = midGapTop + Math.max(0, (midGap - legendH) / 2);
+    else legendY = Math.max(pad * 0.4, paperH - legendH - pad * 0.4);
+  }
+  legendX = Math.max(pad, Math.min(legendX, paperW - legendW - pad));
+  const overlapsGrid = !(
+    legendY + legendH <= gridTop - 0.3
+    || legendY >= gridBottom + 0.3
+    || (midGap >= legendH && legendY >= midGapTop - 0.1 && legendY + legendH <= midGapBottom + 0.1)
+  );
+  if (overlapsGrid) {
+    if (topRoom >= legendH + 1) legendY = Math.max(0.6, gridTop - legendH - 0.6);
+    else if (bottomRoom >= legendH + 1) legendY = Math.min(paperH - legendH - 0.6, gridBottom + 0.6);
+  }
+  return {
+    labels,
+    legend: {
+      x: legendX,
+      y: legendY,
+      w: legendW,
+      h: legendH,
+      title: copy.title,
+      steps: copy.steps,
+    },
+  };
+}
+
+function renderGachaAssemblyGuideSvg(guide) {
+  if (!guide?.labels?.length) return "";
+  const labelEls = guide.labels.map((lab) => {
+    const tick = lab.tick
+      ? `<line x1="${lab.tick[0]}" y1="${lab.tick[1]}" x2="${lab.tick[2]}" y2="${lab.tick[3]}" />`
+      : "";
+    const anchor = lab.anchor === "end" ? "end" : lab.anchor === "middle" ? "middle" : "start";
+    return `${tick}<text class="imposition-gacha-guide-label" x="${lab.x}" y="${lab.y}" text-anchor="${anchor}" dominant-baseline="middle">${escapeHtml(lab.id)}</text>`;
+  }).join("");
+  const L = guide.legend;
+  let legendEls = "";
+  if (L) {
+    const lineH = 2.7;
+    const lines = [L.title, ...(L.steps || [])];
+    const boxH = Math.max(
+      Number(L.h) > 0 ? L.h : 0,
+      lines.length * lineH + 3.4,
+    );
+    const textX = L.x + 1.6;
+    const textY0 = L.y + 2.55;
+    // 枠幅は resolve 側の見積もり。高さは行数から再確保して本文が枠外に出ないようにする
+    legendEls = `<g class="imposition-gacha-guide-legend">
+      <rect x="${L.x}" y="${L.y}" width="${L.w}" height="${boxH}" rx="0.6" ry="0.6" />
+      ${lines.map((t, i) => `<text x="${textX}" y="${textY0 + i * lineH}">${escapeHtml(t)}</text>`).join("")}
+    </g>`;
+  }
+  return `<g class="imposition-gacha-guide" fill="#222" stroke="#222" stroke-width="0.28" stroke-linecap="square">${labelEls}${legendEls}</g>`;
+}
+
+function drawGachaAssemblyGuideOnCanvas(ctx, guide) {
+  if (!guide?.labels?.length) return;
+  ctx.save();
+  ctx.strokeStyle = "#222222";
+  ctx.fillStyle = "#222222";
+  ctx.lineWidth = Math.max(1, mmToPxForImpositionPrint(0.22));
+  ctx.font = `bold ${Math.max(9, mmToPxForImpositionPrint(2.4))}px "Yu Gothic UI", Meiryo, sans-serif`;
+  ctx.textBaseline = "middle";
+  for (const lab of guide.labels) {
+    if (lab.tick) {
+      ctx.beginPath();
+      ctx.moveTo(mmToPxForImpositionPrint(lab.tick[0]), mmToPxForImpositionPrint(lab.tick[1]));
+      ctx.lineTo(mmToPxForImpositionPrint(lab.tick[2]), mmToPxForImpositionPrint(lab.tick[3]));
+      ctx.stroke();
+    }
+    ctx.textAlign = lab.anchor === "end" ? "right" : lab.anchor === "middle" ? "center" : "left";
+    ctx.fillText(String(lab.id), mmToPxForImpositionPrint(lab.x), mmToPxForImpositionPrint(lab.y));
+  }
+  const L = guide.legend;
+  if (L) {
+    const x = mmToPxForImpositionPrint(L.x);
+    const y = mmToPxForImpositionPrint(L.y);
+    const lines = [L.title, ...(L.steps || [])];
+    const fontPx = Math.max(7, mmToPxForImpositionPrint(1.85));
+    const lineH = fontPx * 1.28;
+    const pad = mmToPxForImpositionPrint(1.1);
+    let maxTw = 0;
+    lines.forEach((t, i) => {
+      ctx.font = `${i === 0 ? "bold " : ""}${fontPx}px "Yu Gothic UI", Meiryo, sans-serif`;
+      maxTw = Math.max(maxTw, ctx.measureText(t).width);
+    });
+    const boxW = Math.max(mmToPxForImpositionPrint(L.w), maxTw + pad * 2);
+    const boxH = Math.max(
+      Number(L.h) > 0 ? mmToPxForImpositionPrint(L.h) : 0,
+      pad * 2 + lines.length * lineH,
+    );
+    const boxX = x - Math.max(0, (boxW - mmToPxForImpositionPrint(L.w)) / 2);
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    ctx.strokeStyle = "rgba(40,40,40,0.45)";
+    ctx.lineWidth = Math.max(1, mmToPxForImpositionPrint(0.15));
+    ctx.beginPath();
+    ctx.rect(boxX, y, boxW, boxH);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#222222";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    lines.forEach((t, i) => {
+      ctx.font = `${i === 0 ? "bold " : ""}${fontPx}px "Yu Gothic UI", Meiryo, sans-serif`;
+      ctx.fillText(t, boxX + pad, y + pad + i * lineH);
+    });
+  }
+  ctx.restore();
+}
+
+function gachaVisualContentBoxesMm(cellX, cellY, cellW, cellH, gacha, slot, upsideDown) {
+  let boxes = gachaContentBoxesInCellMm(cellX, cellY, cellW, gacha, slot);
+  if (upsideDown) {
+    boxes = boxes.map((box) => gachaReflectBoxInCell(box, cellX, cellY, cellW, cellH));
+  }
+  return boxes;
+}
+
+function mmBoxToPdfRect(box, pageWidthMm, pageHeightMm, rotateWhole) {
+  let xMm = box.x;
+  let yMm = box.y;
+  const wMm = box.w;
+  const hMm = box.h;
+  if (rotateWhole) {
+    xMm = pageWidthMm - (xMm + wMm);
+    yMm = pageHeightMm - (yMm + hMm);
+  }
+  return {
+    x: xMm * IMPOSITION_MM_TO_PT,
+    y: (pageHeightMm - (yMm + hMm)) * IMPOSITION_MM_TO_PT,
+    w: wMm * IMPOSITION_MM_TO_PT,
+    h: hMm * IMPOSITION_MM_TO_PT,
+  };
+}
+
+function drawGachaCropMarksOnCanvas(ctx, geometry, rows, options = {}) {
+  const segs = gachaCropSegmentsMm(geometry, rows, options);
+  ctx.save();
+  if (segs.length > 0) {
+    ctx.strokeStyle = "#111111";
+    ctx.lineWidth = Math.max(1, mmToPxForImpositionPrint(0.2));
+    ctx.beginPath();
+    for (const seg of segs) {
+      ctx.moveTo(mmToPxForImpositionPrint(seg[0]), mmToPxForImpositionPrint(seg[1]));
+      ctx.lineTo(mmToPxForImpositionPrint(seg[2]), mmToPxForImpositionPrint(seg[3]));
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  const showAssemblyGuide = options.gachaShowAssemblyGuide === true
+    || (
+      String(options.sideKind || "") === "front"
+      && Number(options.spineFixedNo) === 1
+    );
+  if (showAssemblyGuide) {
+    drawGachaAssemblyGuideOnCanvas(ctx, resolveGachaAssemblyGuide(geometry, rows, options));
+  }
 }
 
 function formatImpositionMmForFile(n) {
@@ -4745,7 +5508,7 @@ function resolveImpositionSheetGeometry(ip, options = {}) {
     trim.widthMm,
     trim.heightMm,
   );
-  return {
+  const base = {
     layout,
     pageWidthMm: pageLayout.pageWidthMm,
     pageHeightMm: pageLayout.pageHeightMm,
@@ -4756,7 +5519,16 @@ function resolveImpositionSheetGeometry(ip, options = {}) {
     cellWidthMm: cell.cellWidthMm,
     cellHeightMm: cell.cellHeightMm,
     pdfScalePercent: layout.pdfScalePercent,
+    gacha: null,
   };
+  if (!options.useGachaBook) return base;
+  const gacha = resolveGachaImpositionLayout(
+    base.cellWidthMm,
+    base.cellHeightMm,
+    horizontalTrim,
+    normalizeOpeningCanon(state.meta?.opening),
+  );
+  return { ...base, gacha };
 }
 
 function applyImpositionPrintDynamicPageStyles(layout) {
@@ -5343,6 +6115,17 @@ function drawContainedImage(ctx, img, x, y, w, h, scaleFactor = 1) {
   ctx.restore();
 }
 
+/** 指定矩形いっぱいに伸縮して描画（左右・天地ともピッタリ）。 */
+function drawFilledImage(ctx, img, x, y, w, h) {
+  if (!img || w <= 0 || h <= 0) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.drawImage(img, x, y, w, h);
+  ctx.restore();
+}
+
 function drawImpositionTextSlot(ctx, slot, x, y, w, h, upsideDown, showPageLabel = true) {
   ctx.save();
   if (upsideDown) {
@@ -5384,8 +6167,9 @@ function drawImpositionFolioOnCanvas(ctx, pageNo, x, y, w, h) {
   ctx.restore();
 }
 
-function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx, cellW, cellH, rowCount) {
-  if (!placement || !Number.isFinite(Number(foldNo))) return;
+function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx, cellW, cellH, rowCount, lineOnly = false, gacha = null) {
+  if (!placement) return;
+  if (!lineOnly && !Number.isFinite(Number(foldNo))) return;
   const titleShort = getImpositionSpineTitleShort(state.meta);
   const label = `${titleShort} 《${foldNo}》`;
   const fontSize = Math.max(8, Math.min(cellW, cellH) * 0.035);
@@ -5410,18 +6194,35 @@ function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx,
     const topY = Number(rowYPx[row]) || 0;
     const bottomY = topY + cellH;
     const midY = (topY + bottomY) / 2;
-    const halfGap = Math.max(8, fontSize * String(label).length * 0.55);
-    ctx.beginPath();
-    ctx.moveTo(lineX, topY);
-    ctx.lineTo(lineX, midY - halfGap);
-    ctx.moveTo(lineX, midY + halfGap);
-    ctx.lineTo(lineX, bottomY);
-    ctx.stroke();
-    ctx.save();
-    ctx.translate(lineX, midY);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
+    if (lineOnly) {
+      ctx.beginPath();
+      if (gacha && !gacha.error) {
+        const gapPx = mmToPxForImpositionPrint(GACHA_SPINE_CUT_GAP_MM);
+        const cutYs = gachaSpineCutYsInCellMm(gacha).map((y) => topY + mmToPxForImpositionPrint(y));
+        const segs = gachaSplitLineByCutGaps(topY, bottomY, cutYs, gapPx);
+        for (const [a, b] of segs) {
+          ctx.moveTo(lineX, a);
+          ctx.lineTo(lineX, b);
+        }
+      } else {
+        ctx.moveTo(lineX, topY);
+        ctx.lineTo(lineX, bottomY);
+      }
+      ctx.stroke();
+    } else {
+      const halfGap = Math.max(8, fontSize * String(label).length * 0.55);
+      ctx.beginPath();
+      ctx.moveTo(lineX, topY);
+      ctx.lineTo(lineX, midY - halfGap);
+      ctx.moveTo(lineX, midY + halfGap);
+      ctx.lineTo(lineX, bottomY);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(lineX, midY);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+    }
   } else if (placement.kind === "between-rows") {
     const c = Number(placement.c);
     const upper = Number(placement.upperRow);
@@ -5431,28 +6232,38 @@ function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx,
     const leftX = Number(colXPx[c]) || 0;
     const rightX = leftX + cellW;
     const midX = (leftX + rightX) / 2;
-    const halfGap = Math.max(10, fontSize * String(label).length * 0.42);
-    ctx.beginPath();
-    ctx.moveTo(leftX, lineY);
-    ctx.lineTo(midX - halfGap, lineY);
-    ctx.moveTo(midX + halfGap, lineY);
-    ctx.lineTo(rightX, lineY);
-    ctx.stroke();
-    ctx.fillText(label, midX, lineY);
+    if (lineOnly) {
+      ctx.beginPath();
+      ctx.moveTo(leftX, lineY);
+      ctx.lineTo(rightX, lineY);
+      ctx.stroke();
+    } else {
+      const halfGap = Math.max(10, fontSize * String(label).length * 0.42);
+      ctx.beginPath();
+      ctx.moveTo(leftX, lineY);
+      ctx.lineTo(midX - halfGap, lineY);
+      ctx.moveTo(midX + halfGap, lineY);
+      ctx.lineTo(rightX, lineY);
+      ctx.stroke();
+      ctx.fillText(label, midX, lineY);
+    }
   }
   ctx.restore();
 }
 
-async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
+async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip, renderMode = "jpeg") {
+  const annotationsOnly = renderMode === "annotations";
   const pageWpx = Math.max(1, Math.round(mmToPxForImpositionPrint(pageLayout.pageWidthMm)));
   const pageHpx = Math.max(1, Math.round(mmToPxForImpositionPrint(pageLayout.pageHeightMm)));
   const canvas = document.createElement("canvas");
   canvas.width = pageWpx;
   canvas.height = pageHpx;
-  const ctx = canvas.getContext("2d", { alpha: false });
+  const ctx = canvas.getContext("2d", { alpha: annotationsOnly });
   if (!ctx) throw new Error(LOCALE === "en" ? "Canvas unavailable." : "Canvas を利用できません。");
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, pageWpx, pageHpx);
+  if (!annotationsOnly) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, pageWpx, pageHpx);
+  }
 
   const rows = Array.isArray(sheet?.rows) ? sheet.rows : [];
   const rowCount = Math.max(1, rows.length);
@@ -5460,19 +6271,25 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
   const options = {
     horizontalTrim: Boolean(sheet?.horizontalTrim) || isHorizontalTrimSize(state.meta?.trimSize),
     use8up: sheet?.use8up != null ? Boolean(sheet.use8up) : Boolean(state.impositionOptions.use8up),
+    useGachaBook: sheet?.useGachaBook != null
+      ? Boolean(sheet.useGachaBook)
+      : Boolean(state.impositionOptions.useGachaBook),
     forceAllUpsideDown: Boolean(sheet?.forceAllUpsideDown),
     forceNoUpsideDown: Boolean(sheet?.forceNoUpsideDown),
   };
   const sideKind = String(sheet?.sideKind || "front");
   const geometry = resolveImpositionSheetGeometry(ip, {
     use8up: options.use8up,
+    useGachaBook: options.useGachaBook,
     horizontalTrim: options.horizontalTrim,
     colCount,
     rowCount,
     sideKind,
   });
+  const gacha = geometry.gacha && !geometry.gacha.error ? geometry.gacha : null;
   const cellW = mmToPxForImpositionPrint(geometry.cellWidthMm);
   const cellH = mmToPxForImpositionPrint(geometry.cellHeightMm);
+  const cellWMm = geometry.cellWidthMm;
   const colXPx = geometry.colXMM.map((mm) => mmToPxForImpositionPrint(mm));
   const rowYPx = geometry.rowYMM.map((mm) => mmToPxForImpositionPrint(mm));
   const pdfScale = Number.parseFloat(toImpositionPdfRenderScale(ip.pdfScalePercent)) || 1;
@@ -5481,6 +6298,7 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
     : Boolean(state.impositionOptions.showPageLabel);
   const halfMode = Boolean(sheet?.halfMode);
   const signatureSize = options.use8up || halfMode ? 8 : 16;
+  const spineLineOnly = Boolean(options.useGachaBook);
   const spinePlacement = sideKind === "front"
     ? findImpositionSpineAdjacencyByCandidates(
       rows,
@@ -5498,7 +6316,64 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
         const x = Number(colXPx[c]) || 0;
         const y = Number(rowYPx[r]) || 0;
         if (!slot) continue;
+        if (gacha) {
+          const contentBoxes = gachaContentBoxesInCellMm(
+            Number(geometry.colXMM[c]) || 0,
+            Number(geometry.rowYMM[r]) || 0,
+            cellWMm,
+            gacha,
+            slot,
+          );
+          targetCtx.save();
+          if (upsideDown) {
+            targetCtx.translate(x + cellW / 2, y + cellH / 2);
+            targetCtx.rotate(Math.PI);
+            targetCtx.translate(-(x + cellW / 2), -(y + cellH / 2));
+          }
+          if (slot.pdfImage) {
+            const img = annotationsOnly ? null : await loadHtmlImageFromSrc(slot.pdfImage);
+            if (!annotationsOnly) {
+              targetCtx.fillStyle = "#ffffff";
+              targetCtx.fillRect(x, y, cellW, cellH);
+            }
+            for (const box of contentBoxes) {
+              const contentX = mmToPxForImpositionPrint(box.x);
+              const contentY = mmToPxForImpositionPrint(box.y);
+              const contentW = mmToPxForImpositionPrint(box.w);
+              const contentH = mmToPxForImpositionPrint(box.h);
+              if (!annotationsOnly && img) {
+                // ガチャポン本: 裁断枠（A4比）にアスペクト比を保って収める（歪めない）
+                drawContainedImage(targetCtx, img, contentX, contentY, contentW, contentH, 1);
+              }
+              if (showPageLabel) {
+                drawImpositionFolioOnCanvas(targetCtx, slot.pageNo, contentX, contentY, contentW, contentH);
+              }
+            }
+          } else if (!annotationsOnly || showPageLabel) {
+            for (const box of contentBoxes) {
+              const contentX = mmToPxForImpositionPrint(box.x);
+              const contentY = mmToPxForImpositionPrint(box.y);
+              const contentW = mmToPxForImpositionPrint(box.w);
+              const contentH = mmToPxForImpositionPrint(box.h);
+              drawImpositionTextSlot(targetCtx, slot, contentX, contentY, contentW, contentH, false, showPageLabel);
+            }
+          }
+          targetCtx.restore();
+          continue;
+        }
         if (slot.pdfImage) {
+          if (annotationsOnly) {
+            if (!showPageLabel) continue;
+            targetCtx.save();
+            if (upsideDown) {
+              targetCtx.translate(x + cellW / 2, y + cellH / 2);
+              targetCtx.rotate(Math.PI);
+              targetCtx.translate(-(x + cellW / 2), -(y + cellH / 2));
+            }
+            drawImpositionFolioOnCanvas(targetCtx, slot.pageNo, x, y, cellW, cellH);
+            targetCtx.restore();
+            continue;
+          }
           const img = await loadHtmlImageFromSrc(slot.pdfImage);
           targetCtx.save();
           if (upsideDown) {
@@ -5511,12 +6386,12 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
           if (img) drawContainedImage(targetCtx, img, x, y, cellW, cellH, pdfScale);
           if (showPageLabel) drawImpositionFolioOnCanvas(targetCtx, slot.pageNo, x, y, cellW, cellH);
           targetCtx.restore();
-        } else {
+        } else if (!annotationsOnly || showPageLabel) {
           drawImpositionTextSlot(targetCtx, slot, x, y, cellW, cellH, upsideDown, showPageLabel);
         }
       }
     }
-    if (spinePlacement && Number.isFinite(foldNo) && foldNo >= 1) {
+    if (spinePlacement && (spineLineOnly || (Number.isFinite(foldNo) && foldNo >= 1))) {
       drawImpositionSpineMarkOnCanvas(
         targetCtx,
         spinePlacement,
@@ -5526,7 +6401,16 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
         cellW,
         cellH,
         rowCount,
+        spineLineOnly,
+        gacha,
       );
+    }
+    if (gacha) {
+      drawGachaCropMarksOnCanvas(targetCtx, geometry, rows, {
+        ...options,
+        sideKind,
+        spineFixedNo: foldNo,
+      });
     }
   };
 
@@ -5534,10 +6418,12 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
     const layer = document.createElement("canvas");
     layer.width = pageWpx;
     layer.height = pageHpx;
-    const layerCtx = layer.getContext("2d", { alpha: false });
+    const layerCtx = layer.getContext("2d", { alpha: annotationsOnly });
     if (!layerCtx) throw new Error(LOCALE === "en" ? "Canvas unavailable." : "Canvas を利用できません。");
-    layerCtx.fillStyle = "#ffffff";
-    layerCtx.fillRect(0, 0, pageWpx, pageHpx);
+    if (!annotationsOnly) {
+      layerCtx.fillStyle = "#ffffff";
+      layerCtx.fillRect(0, 0, pageWpx, pageHpx);
+    }
     await drawGrid(layerCtx);
     ctx.translate(pageWpx / 2, pageHpx / 2);
     ctx.rotate(Math.PI);
@@ -5547,6 +6433,11 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip) {
     await drawGrid(ctx);
   }
 
+  if (annotationsOnly) {
+    const dataUrl = canvas.toDataURL("image/png");
+    const parsed = dataUrlToBytes(dataUrl);
+    return parsed ? parsed.bytes : null;
+  }
   const dataUrl = canvas.toDataURL("image/jpeg", 0.93);
   const parsed = dataUrlToBytes(dataUrl);
   if (!parsed) throw new Error(LOCALE === "en" ? "Failed to encode sheet image." : "シート画像のエンコードに失敗しました。");
@@ -6317,29 +7208,29 @@ function collectAllUserShapeNodes(spTree) {
 }
 
 function collectSourceNodesForSlot(spTree, side, slideWidthEmu, sourceSignature) {
-  const sideNodes = new Set(collectSpTreeHalfShapeNodes(
-    spTree, side, slideWidthEmu, { includeBackground: false },
-  ));
-  // PowerPoint copy/paste retains the old object's ADWUSR name. Such a tag
-  // may belong to an article that is no longer on this slide. It is NOT a
-  // reason to discard the object: use its current page position instead.
-  const currentSignatures = new Set(sourceSignature ? [sourceSignature] : []);
-  for (const node of spTree?.children || []) {
-    if (!isAdwBackgroundShape(node)) continue;
-    const slot = parseAdwShapeName(getShapeNvPrName(node));
-    if (slot) currentSignatures.add(buildRoughSlotSignature(slot));
+  if (sourceSignature) {
+    const tagged = collectAllUserShapeNodes(spTree).filter(
+      (node) => parseAdwUserShapeTag(getShapeNvPrName(node))?.signature === sourceSignature,
+    );
+    if (tagged.length > 0) return tagged;
   }
-  return collectAllUserShapeNodes(spTree).filter((node) => {
-    const tag = parseAdwUserShapeTag(getShapeNvPrName(node));
-    if (tag && sourceSignature && currentSignatures.has(tag.signature)) {
-      return tag.signature === sourceSignature;
-    }
-    return sideNodes.has(node);
-  });
+  return collectSpTreeHalfShapeNodes(spTree, side, slideWidthEmu, { includeBackground: false });
 }
 
 function collectTargetNodesForRemoval(spTree, side, slideWidthEmu, targetSignature) {
-  return collectSourceNodesForSlot(spTree, side, slideWidthEmu, targetSignature);
+  const sideNodes = collectSpTreeHalfShapeNodes(spTree, side, slideWidthEmu, { includeBackground: false });
+  if (!targetSignature) return sideNodes;
+  const tagged = collectAllUserShapeNodes(spTree).filter(
+    (node) => parseAdwUserShapeTag(getShapeNvPrName(node))?.signature === targetSignature,
+  );
+  const uniq = new Set();
+  const merged = [];
+  for (const n of [...sideNodes, ...tagged]) {
+    if (uniq.has(n)) continue;
+    uniq.add(n);
+    merged.push(n);
+  }
+  return merged;
 }
 
 function getMaxShapeIdInDoc(doc) {
@@ -6378,7 +7269,7 @@ function shiftShapeTreeXemu(root, deltaX) {
 }
 
 function parseRelationshipTargetPath(target) {
-  const raw = String(target || "").replace(/^\//, "").replace(/^\.\.\//, "");
+  const raw = String(target || "").replace(/^\.\.\//, "");
   return raw.startsWith("ppt/") ? raw : `ppt/${raw}`;
 }
 
@@ -6406,51 +7297,10 @@ function nextRelationshipId(relsDoc) {
   return `rId${max + 1}`;
 }
 
-// A copied image needs both its relationship and its OPC content type.
-// In particular, repairPptxGenJsZip removes unused defaults before old images
-// are imported, so assuming that EMF/JPEG/etc. are already registered is unsafe.
-async function registerCopiedPptxImageType(sourceZip, sourcePath, targetZip, targetPath) {
-  const contentTypesPath = "[Content_Types].xml";
-  const sourceFile = sourceZip.file(contentTypesPath);
-  const targetFile = targetZip.file(contentTypesPath);
-  if (!sourceFile || !targetFile) throw new Error("PPTX: [Content_Types].xml is missing.");
-  const parser = new DOMParser();
-  const sourceDoc = parser.parseFromString(await sourceFile.async("string"), "application/xml");
-  const targetDoc = parser.parseFromString(await targetFile.async("string"), "application/xml");
-  if (sourceDoc.querySelector("parsererror") || targetDoc.querySelector("parsererror")) {
-    throw new Error("PPTX: invalid [Content_Types].xml.");
-  }
-  const extension = sourcePath.split(".").pop().toLowerCase();
-  const sourceEntries = [...sourceDoc.documentElement.children];
-  const override = sourceEntries.find((el) => xmlLocalName(el) === "Override"
-    && el.getAttribute("PartName") === `/${sourcePath}`);
-  const fallback = sourceEntries.find((el) => xmlLocalName(el) === "Default"
-    && String(el.getAttribute("Extension")).toLowerCase() === extension);
-  const contentType = (override || fallback)?.getAttribute("ContentType");
-  if (!contentType) throw new Error(`PPTX: image content type is missing: ${sourcePath}`);
-  const targetEntries = [...targetDoc.documentElement.children];
-  const existingOverride = targetEntries.find((el) => xmlLocalName(el) === "Override"
-    && el.getAttribute("PartName") === `/${targetPath}`);
-  const existingDefault = targetEntries.find((el) => xmlLocalName(el) === "Default"
-    && String(el.getAttribute("Extension")).toLowerCase() === extension);
-  if ((existingOverride || existingDefault)?.getAttribute("ContentType") === contentType) return;
-  // A per-part override preserves the source type without changing other images
-  // which happen to have the same extension in the destination.
-  const entry = existingOverride || targetDoc.createElementNS(
-    "http://schemas.openxmlformats.org/package/2006/content-types", "Override",
-  );
-  entry.setAttribute("PartName", `/${targetPath}`);
-  entry.setAttribute("ContentType", contentType);
-  if (!existingOverride) targetDoc.documentElement.appendChild(entry);
-  targetZip.file(contentTypesPath, new XMLSerializer().serializeToString(targetDoc));
-}
-
 async function remapBlipEmbedsInFragment(root, sourceZip, sourceRelsPath, targetZip, targetRelsPath, ridMap) {
-  const relationshipNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   const blips = [];
   const walker = (node) => {
-    // SVG images carry a second image relationship on asvg:svgBlip.
-    if (xmlLocalName(node) === "blip" || xmlLocalName(node) === "svgBlip") blips.push(node);
+    if (xmlLocalName(node) === "blip") blips.push(node);
     for (const child of node.children || []) walker(child);
   };
   walker(root);
@@ -6458,42 +7308,43 @@ async function remapBlipEmbedsInFragment(root, sourceZip, sourceRelsPath, target
 
   const sourceRelsFile = sourceZip.file(sourceRelsPath);
   const targetRelsFile = targetZip.file(targetRelsPath);
-  if (!sourceRelsFile || !targetRelsFile) throw new Error("PPTX: image relationships are missing.");
+  if (!sourceRelsFile || !targetRelsFile) return;
+
   const sourceRelsMap = await readRelationshipsMap(await sourceRelsFile.async("string"));
+  const targetRelsXml = await targetRelsFile.async("string");
   const parser = new DOMParser();
-  const targetRelsDoc = parser.parseFromString(await targetRelsFile.async("string"), "application/xml");
+  const targetRelsDoc = parser.parseFromString(targetRelsXml, "application/xml");
   const serializer = new XMLSerializer();
 
   for (const blip of blips) {
-    const oldRid = blip.getAttributeNS(relationshipNs, "embed") || blip.getAttribute("r:embed");
-    if (!oldRid) continue;
-    if (ridMap.has(oldRid)) {
-      blip.setAttributeNS(relationshipNs, "r:embed", ridMap.get(oldRid));
+    const oldRid = blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed")
+      || blip.getAttribute("r:embed");
+    if (!oldRid || ridMap.has(oldRid)) {
+      if (oldRid && ridMap.has(oldRid)) blip.setAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed", ridMap.get(oldRid));
       continue;
     }
     const target = sourceRelsMap.get(oldRid);
-    if (!target) throw new Error(`PPTX: image relationship is missing: ${oldRid}`);
+    if (!target) continue;
     const mediaPath = parseRelationshipTargetPath(target);
     const mediaFile = sourceZip.file(mediaPath);
-    if (!mediaFile) throw new Error(`PPTX: image part is missing: ${mediaPath}`);
+    if (!mediaFile) continue;
     const ext = mediaPath.split(".").pop() || "png";
-    let newMediaName;
-    do {
-      newMediaName = `media/adw_${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext}`;
-    } while (targetZip.file(`ppt/${newMediaName}`));
-    await registerCopiedPptxImageType(sourceZip, mediaPath, targetZip, `ppt/${newMediaName}`);
-    targetZip.file(`ppt/${newMediaName}`, await mediaFile.async("uint8array"));
+    const newMediaName = `media/adw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const data = await mediaFile.async("uint8array");
+    targetZip.file(`ppt/${newMediaName}`, data);
     const newRid = nextRelationshipId(targetRelsDoc);
     const relEl = targetRelsDoc.createElementNS(
-      "http://schemas.openxmlformats.org/package/2006/relationships", "Relationship",
+      "http://schemas.openxmlformats.org/package/2006/relationships",
+      "Relationship",
     );
     relEl.setAttribute("Id", newRid);
-    relEl.setAttribute("Type", `${relationshipNs}/image`);
+    relEl.setAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image");
     relEl.setAttribute("Target", `../${newMediaName}`);
     targetRelsDoc.documentElement.appendChild(relEl);
     ridMap.set(oldRid, newRid);
-    blip.setAttributeNS(relationshipNs, "r:embed", newRid);
+    blip.setAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed", newRid);
   }
+
   targetZip.file(targetRelsPath, serializer.serializeToString(targetRelsDoc));
 }
 
@@ -6541,9 +7392,6 @@ async function copySlideHalfFromSourceToTarget({
   const sourceWidth = Number(sourceSlideWidthEmu) || Number(targetSlideWidthEmu) || 0;
   const targetWidth = Number(targetSlideWidthEmu) || Number(sourceSlideWidthEmu) || 0;
   const sourceNodes = collectSourceNodesForSlot(sourceSpTree, srcSide, sourceWidth, sourceSignature);
-  // The freshly generated target already contains the default title. Keep it
-  // if the old page is empty; otherwise replace it with ALL existing roughs.
-  if (sourceNodes.length === 0) return;
   const removeNodes = targetSinglePage
     ? collectAllUserShapeNodes(targetSpTree)
     : collectTargetNodesForRemoval(targetSpTree, dstSide, targetWidth, targetSignature);
@@ -6604,12 +7452,6 @@ async function buildRoughSpreadPptxBlob(pageItems, trimSize, opening, options = 
     addRoughPageImageToSpreadHalf(slide, spec.left?.image, "left", layout.pageWidthIn, layout.slideHeightIn, spec.left);
     if (!effective.singlePage) {
       addRoughPageImageToSpreadHalf(slide, spec.right?.image, "right", layout.pageWidthIn, layout.slideHeightIn, spec.right);
-    }
-    if (!effective.hideLabels) {
-      addRoughPagePlaceholder(slide, spec.left, "left", layout.pageWidthIn, layout.slideHeightIn);
-      if (!effective.singlePage) {
-        addRoughPagePlaceholder(slide, spec.right, "right", layout.pageWidthIn, layout.slideHeightIn);
-      }
     }
   }
   const blob = await pptx.write({ outputType: "blob" });
@@ -6808,35 +7650,6 @@ function buildRoughSpreadExportSlides(pageItems, opening = "left") {
 
 function buildRoughSinglePageExportSlides(pageItems) {
   return pageItems.map((page) => ({ left: page, right: null }));
-}
-
-function addRoughPagePlaceholder(slide, pageData, side, pageWidthIn, slideHeightIn) {
-  if (!pageData) return; // A blank half outside the book is not an article page.
-  const title = getRoughArticleBottomLevel(pageData).name || String(pageData.title || "").trim();
-  if (!title) return;
-  const pageInArticle = Math.max(1, Number(pageData.dupIndex) || 1);
-  const firstPage = pageInArticle === 1;
-  const scale = Math.min(pageWidthIn / (210 / 25.4), slideHeightIn / (297 / 25.4));
-  const margin = (24 / 25.4) * scale;
-  const top = firstPage ? (29 / 25.4) * scale : slideHeightIn * 0.42;
-  slide.addText(`${title}\n(${pageInArticle})`, {
-    x: (side === "right" ? pageWidthIn : 0) + margin,
-    y: top,
-    w: pageWidthIn - margin * 2,
-    h: Math.min(slideHeightIn * 0.36, slideHeightIn - top - margin),
-    fontFace: "Yu Gothic",
-    fontSize: 40 * scale,
-    bold: firstPage,
-    color: "000000",
-    margin: 0,
-    breakLine: false,
-    valign: "top",
-    align: "left",
-    fit: "shrink",
-    paraSpaceAfterPt: 0,
-    // Treat this editable text as an existing rough on subsequent updates.
-    objectName: buildAdwUserShapeName(buildRoughSlotSignature(pageData), "Rough page title"),
-  });
 }
 
 function addRoughPageImageToSpreadHalf(slide, imageData, side, pageWidthIn, slideHeightIn, pageData) {
@@ -10353,15 +11166,6 @@ function hasUnsavedLocalSyncChanges() {
   return localText !== String(remoteSyncState.lastSavedText || "");
 }
 
-function isRemoteUpdatedByThisClient(updatedBy) {
-  const id = String(remoteSyncState.clientId || "").trim();
-  if (!id) return false;
-  return String(updatedBy || "")
-    .split("|")
-    .map((part) => part.trim())
-    .includes(id);
-}
-
 function alignRemoteSyncStateFromFetch(data, options = {}) {
   if (!data || data.ok === false) return false;
   const remoteText = typeof data.text === "string" ? data.text : "";
@@ -10458,12 +11262,7 @@ async function fetchRemoteSyncJson(method, payload) {
 }
 
 async function refreshRemoteSyncVersionOnly() {
-  if (!remoteSyncState.enabled) return false;
-  // 保存失敗直後の版合わせは polling 中でも優先する（ロック待ちだと knownVersion が古いまま残る）。
-  if (remoteSyncState.isPolling) {
-    const data = await fetchRemoteSyncJson("GET");
-    return alignRemoteSyncStateFromFetch(data);
-  }
+  if (!remoteSyncState.enabled || remoteSyncState.isPolling) return false;
   remoteSyncState.isPolling = true;
   try {
     const data = await fetchRemoteSyncJson("GET");
@@ -10475,8 +11274,7 @@ async function refreshRemoteSyncVersionOnly() {
 }
 
 async function pollRemoteLatest(options = {}) {
-  // 保存中のポーリングは knownVersion だけ先に進み、自端末の保存レースを競合扱いしやすくする。
-  if (!remoteSyncState.enabled || remoteSyncState.isPolling || remoteSyncState.isSaving) return false;
+  if (!remoteSyncState.enabled || remoteSyncState.isPolling) return false;
   remoteSyncState.isPolling = true;
   try {
     const data = await fetchRemoteSyncJson("GET");
@@ -10513,12 +11311,6 @@ async function pollRemoteLatest(options = {}) {
           ? "Remote changes from another session/tab were detected. Latest content has been applied."
           : "別セッション（別タブ・別端末を含む）での更新を検知しました。最新内容を反映しました。",
       );
-    } else if (!hasDiff) {
-      // 画面上は一致しているのに lastSavedText だけ古い（timeout 後など）状態を解消する。
-      remoteSyncState.lastSavedText = remoteText;
-      if (remoteVersion > remoteSyncState.appliedVersion) {
-        remoteSyncState.appliedVersion = remoteVersion;
-      }
     } else if (shouldApply && remoteVersion > remoteSyncState.appliedVersion && !hasUnsavedLocalSyncChanges()) {
       remoteSyncState.appliedVersion = remoteVersion;
     }
@@ -10561,7 +11353,7 @@ function notifyRemoteSync(message) {
   window.alert(message);
 }
 
-async function saveRemoteIfChanged(options = {}) {
+async function saveRemoteIfChanged() {
   if (!remoteSyncState.enabled || remoteSyncState.isSaving) return false;
   const text = getWorkingTextForRemoteSync();
   const prevText = String(remoteSyncState.lastSavedText || "");
@@ -10582,7 +11374,6 @@ async function saveRemoteIfChanged(options = {}) {
     remoteSyncState.clearSyncConfirmed = false;
   }
   remoteSyncState.isSaving = true;
-  let retryAfterOwnRace = false;
   updateRemoteSyncStatus(
     LOCALE === "en"
       ? `Sync:${remoteSyncState.shareId} saving`
@@ -10598,7 +11389,6 @@ async function saveRemoteIfChanged(options = {}) {
     };
     const data = await fetchRemoteSyncJson("POST", payload);
     if (!data || data.ok === false) {
-      // timeout/abort でもサーバ側では保存済みのことがある。版だけ合わせて次回の誤競合を防ぐ。
       await refreshRemoteSyncVersionOnly();
       updateRemoteSyncStatus(
         LOCALE === "en"
@@ -10634,17 +11424,6 @@ async function saveRemoteIfChanged(options = {}) {
         );
         return false;
       }
-      // 自クライアントの先行保存（timeout 後の再送など）との版ずれ。
-      // リモートで上書きすると編集中の内容が巻き戻るので、版だけ進めてローカルを再保存する。
-      if (isRemoteUpdatedByThisClient(data.updatedBy)) {
-        updateRemoteSyncStatus(
-          LOCALE === "en"
-            ? `Sync:${remoteSyncState.shareId} v${Math.max(remoteSyncState.knownVersion, 0)}`
-            : `同期:${remoteSyncState.shareId} v${Math.max(remoteSyncState.knownVersion, 0)}`,
-        );
-        if (!options.retryOfOwnRace) retryAfterOwnRace = true;
-        return false;
-      }
       notifyRemoteSync(
         LOCALE === "en"
           ? "Conflict detected. Newer remote content has priority and will be applied."
@@ -10674,11 +11453,6 @@ async function saveRemoteIfChanged(options = {}) {
   }
   finally {
     remoteSyncState.isSaving = false;
-    if (retryAfterOwnRace) {
-      window.setTimeout(() => {
-        void saveRemoteIfChanged({ retryOfOwnRace: true });
-      }, 0);
-    }
   }
 }
 

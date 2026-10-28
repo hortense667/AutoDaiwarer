@@ -334,16 +334,22 @@
 - **PPTX更新・出力**（面付け）: 更新ダイアログで「見開きでなく1ページずつ出力」「目次名とページ番号を表示しない」を選択できます。未チェック時は見開き出力で再生成し、記事が一致する半ページは旧PPTXから編集済みの形状をコピーします。照合は最下位クラスの記事名から始め、同名が複数なら上位クラス（小→中→大）→連番の順で判定します。処理中は「処理中…」を表示します。
 - **PDF読み込み（見開き）**: 見開きPDFをノンブル順（1, 2, 3…）に分割して読み込みます。面付けの台指定が `1 4 2 3` のような変則順でも、各スロットは台割上の**ページ番号**（全体通し）でPDFを参照するため正しく対応します。PDFには台割**全体**のページ列が含まれている必要があります。
 - **背丁**（面付プレビュー／印刷）: グリッド上で **1–16**（16面）または **1–8**（8面）が辺で隣り合う折のみ、折り（背）の中央に小さく表示。`//書名` を先頭15字程度＋折番号を《》で表示し、プレビュー・印刷に出る順で番号を振る。折位置には薄い補助線（文言部分は除き、線と字の間に余白）。縦判＝縦組、横判＝横書き。横判16面など、最終グリッドで隣接しない場合は表示されないことがあります。
-- **地図折り**（面付け）: 1枚の紙を16ページに折る「地図折り」の面付け配置を、自分で自由に指定できる機能です。**16面付け専用**で、`地図折り（16個）` 欄に値を入れると **8面付け・8P折本は自動的にOFF** になります（排他）。標準の16面付けマップの代わりに、入力した配置で面付けプレビュー・印刷・PDF読み込みを行います。
+- **地図折り**（面付け）: 1枚の紙を16ページに折る「地図折り」の面付け配置を、自分で自由に指定できる機能です。**16面付け専用**で、`地図折り（16個）` 欄に値を入れると **8面付け・8P折本・ガチャポン本は自動的にOFF** になります（排他）。標準の16面付けマップの代わりに、入力した配置で面付けプレビュー・印刷・PDF読み込みを行います。
   - **入力する値**: `1`〜`16` を **重複なくちょうど16個** 指定します。区切りはカンマ・半角/全角スペース・読点（`、`）・全角カンマ（`，`）のいずれでも構いません。各数字は **その台（16ページの折丁）の中の相対ページ位置** を表します（`1` ＝台の1ページ目、`16` ＝台の16ページ目）。1〜16以外の数字・個数違い・重複があるとエラーになり、理由が表示されます。
   - **並べる順番（ここが重要）**: 値は **紙面のマス目に置いていく順** で並べます。**前半の8個が表面、後半の8個が裏面** です。各面のマス目は次の順で埋まります。
     - **縦判**（A4縦など）＝ **4列×2行**。1〜4個目＝表の上段（左→右）、5〜8個目＝表の下段（左→右）、9〜12個目＝裏の上段（左→右）、13〜16個目＝裏の下段（左→右）。
     - **横判**（A4横など）＝ **2列×4行**。上の行から順に各行2個ずつ左→右で埋め、前半8個＝表面、後半8個＝裏面。
   - **例（縦判）**: `1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15` と入れると、表の左上マスに台の1ページ目、その右隣に16ページ目…という並びになります。この例は説明用なので、**実際の折り方に合わせて自由に数字を並べ替えて**ください。
   - **向き**: 各ページは天地そのまま（正立）で配置され、裏面は表裏の裏打ちが合うようシート全体で向きが調整されます。**プレビューを印刷して実際に折り、ページが正しい順序でつながるか確認しながら並びを詰める**のがおすすめです。
-- **8P折本**（面付け）: 8P折本、ワンシートZINE、マジック折などと言われる、1枚の紙を8つにたたんで中央に切り込みを入れて作る簡易製本用の面付です。**縦判のときのみ有効**で、**8面付け・地図折りと排他**です。8ページを超える本文でも、16ページ単位の相対ページ位置で同じ順序を繰り返して割り付けます。  
+- **8P折本**（面付け）: 8P折本、ワンシートZINE、マジック折などと言われる、1枚の紙を8つにたたんで中央に切り込みを入れて作る簡易製本用の面付です。**縦判のときのみ有効**で、**8面付け・地図折り・ガチャポン本と排他**です。8ページを超える本文でも、16ページ単位の相対ページ位置で同じ順序を繰り返して割り付けます。  
   - **右開き**: 表 `1,8,7,6 / 2,3,4,5`、裏 `9,16,15,14 / 10,11,12,13`  
   - **左開き**: 表 `6,7,8,1 / 5,4,3,2`、裏 `14,15,16,9 / 13,12,11,10`
+- **ガチャポン本**（面付け）: ガチャカプセルに入る程度の超小型本向けの面付けです。**通常の16面付けと同じページ配置**のまま、各マス内に同じページを裁断枠いっぱいに縮尺して**上下2つ**置き、枠は綴じ側へ寄せます。**8面付け・8P折本・地図折りと排他**です。
+  - **裁断サイズ**: 縦判は縦40mm×横28.2mm（A4比を保ち歪めない）。横判は縦横入れ替え。
+  - **PDF**: 通常のA4などで版面デザインしたPDFを **PDFを読み込む** と、各裁断枠にちょうど収まるよう配置します。
+  - **トンボ**: 裁断の外側に切り落としとトンボを付けます。**綴じ側（背）のトンボは付けません**（小口側など外側は付けます）。上下2冊の接合辺へ突き出す縦トンボも付けません。
+  - **背丁**: 文言（書名・折番号）は出しません。従来の背丁位置に**背のグレー線のみ**残します。本の上の裁断・上下2冊の境・本の下の裁断では、トンボの延長と交差する位置にグレー線へ**小さな隙間**を空け、ハサミを入れる目印にします。
+  - **組み立て目印（A〜F）**: 用紙の空きに目印と手順を表示・印刷します。折り進めて最後の２つ折りの前にステープラーで留め → **A・B**で天地を裁ち落として上下の本を切り離し → 最後の２つ折り → 綴じ側から **C・D・E**でトンボ付近まで切り込み → **F**で小口を裁ち落とす、という流れです。
 
 ### おすすめワークフロー（ラフ制作〜入稿）
 
@@ -643,10 +649,16 @@ Static files alone cannot call **`/api/session`**, so this applies to the deploy
 - **Update / Export PPTX** (imposition): opens an options dialog with **single-page output** and **hide TOC/page labels**. With no checks, behavior is the same as spread update. Matching pages copy edited shapes from the source PPTX (bottom article level → upper levels → serial number). A **Processing…** overlay is shown until finished.
 - **Load PDF (spread)**: splits spread PDF pages into single pages in flatplan order (1, 2, 3…). Irregular board selection (e.g. `1 4 2 3`) still maps each slot by its **global page number**; the PDF must contain the **full** flatplan page sequence.
 - **Spine marks** (imposition preview/print): when pages **1–16** (16-up) or **1–8** (8-up) are **adjacent** on the rendered grid, a small spine legend is centered on that fold: `//title` (first ~15 graphemes) plus a fold index in 《…》, numbered in output order. A light guide line runs along the fold with a gap around the type. Portrait layout uses vertical type; landscape uses horizontal. Some layouts (e.g. horizontal 16-up) may omit marks when those pages are not neighbors.
-- **Map fold** (imposition): custom 16-up arrangement (enter 16 unique values `1..16` in slot order). Entering this field turns **8-up and 8P fold booklet** off (mutually exclusive).
-- **8P fold booklet** (imposition): one-sheet zine / magic-fold arrangement. Available only for portrait trim, and mutually exclusive with 8-up and map fold. Relative-page order repeats per 16 pages.  
+- **Map fold** (imposition): custom 16-up arrangement (enter 16 unique values `1..16` in slot order). Entering this field turns **8-up, 8P fold booklet, and gacha book** off (mutually exclusive).
+- **8P fold booklet** (imposition): one-sheet zine / magic-fold arrangement. Available only for portrait trim, and mutually exclusive with 8-up, map fold, and gacha book. Relative-page order repeats per 16 pages.  
   - Right opening: front `1,8,7,6 / 2,3,4,5`, back `9,16,15,14 / 10,11,12,13`  
   - Left opening: front `6,7,8,1 / 5,4,3,2`, back `14,15,16,9 / 13,12,11,10`
+- **Gacha book** (imposition): for capsule-size miniature books. Keeps the **same page order as normal 16-up**, and inside each slot scales the page to fill the trim box **twice stacked**, shifted to the binding edge. Mutually exclusive with 8-up, 8P fold booklet, and map fold.
+  - **Trim size**: portrait 40mm tall × 28.2mm wide (A4 aspect, no stretch). Landscape swaps width/height.
+  - **PDF**: load a normal-size designed PDF via **Load PDF**; each page is fitted into the trim boxes.
+  - **Crop marks**: bleed and crop marks outside the trim; **no marks on the binding edge**. Vertical ticks are also omitted on the join between the two stacked copies.
+  - **Spine**: no spine text (title/fold number). A gray fold line remains at the usual spine position, with **small gaps** where it would cross the cut guides (top of book, between the two stacked copies, bottom of book) so scissors marks stay readable.
+  - **Assembly marks (A–F)**: labels and a short how-to are printed in empty paper margins. Workflow: fold and staple before the last double fold → trim at **A/B** to separate the two books → last double fold → slit from the binding edge at **C/D/E** in to the crop marks → trim the fore edge at **F**.
 
 ### Recommended workflow (rough draft to print-ready)
 
