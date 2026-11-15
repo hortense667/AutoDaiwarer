@@ -223,19 +223,30 @@
           </select>
           <label class="imposition-label-inline" for="impositionPdfScalePercent">拡大率(%)</label>
           <input id="impositionPdfScalePercent" type="number" class="imposition-input imposition-scale-input" min="10" max="300" step="1" value="100" title="各ページPDFのスロット内での拡大縮小" />
-          <button id="impositionResetLayoutBtn" type="button" class="imposition-margin-apply-btn" title="判型・縦横・面数から列X・行Yを自動配置">デフォルト位置</button>
-          <label class="imposition-label-inline" for="impositionFrontColXMM">表 列X(mm)</label>
-          <input id="impositionFrontColXMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 12,80,148,216" title="表面：各列の左端（紙左端からmm、カンマ区切り）" />
-          <label class="imposition-label-inline" for="impositionFrontRowYMM">表 行Y(mm)</label>
-          <input id="impositionFrontRowYMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 10,78" title="表面：各行の上端（紙上端からmm、カンマ区切り）" />
-          <label class="imposition-label-inline" for="impositionBackColXMM">裏 列X(mm)</label>
-          <input id="impositionBackColXMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 12,80,148,216" title="裏面：各列の左端（紙左端からmm、カンマ区切り）" />
-          <label class="imposition-label-inline" for="impositionBackRowYMM">裏 行Y(mm)</label>
-          <input id="impositionBackRowYMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 10,78" title="裏面：各行の上端（紙上端からmm、カンマ区切り）" />
+          <label class="imposition-label-inline" for="impositionPrintOffsetX" title="プリンタで実際に出力したときに、印刷位置が左右にずれたときに使います。表と裏のすべての列にこの値を足します（列Xの数字は変えません）。右へ寄せるなら正、左へ寄せるなら負。">位置補正X(mm)</label>
+          <input id="impositionPrintOffsetX" type="number" class="imposition-input imposition-offset-input" min="-40" max="40" step="0.1" value="0" title="プリンタで実際に出力したときに、印刷位置が左右にずれたときに使います。表と裏のすべての列にこの値を足します（列Xの数字は変えません）。右へ寄せるなら正、左へ寄せるなら負。" />
+          <label class="imposition-label-inline" for="impositionPrintOffsetY" title="プリンタで実際に出力したときに、印刷位置が上下（送り方向）にずれたときに使います。表と裏のすべての行にこの値を足します（行Yの数字は変えません）。上へ寄せるなら負（例: -1.5）、下へ寄せるなら正。">位置補正Y(mm)</label>
+          <input id="impositionPrintOffsetY" type="number" class="imposition-input imposition-offset-input" min="-40" max="40" step="0.1" value="0" title="プリンタで実際に出力したときに、印刷位置が上下（送り方向）にずれたときに使います。表と裏のすべての行にこの値を足します（行Yの数字は変えません）。上へ寄せるなら負（例: -1.5）、下へ寄せるなら正。" />
         </div>
+        <details class="imposition-print-advanced">
+          <summary id="impositionPrintAdvancedSummary" title="表裏の列X・行Yを個別に調整します。通常はデフォルト位置のままで十分です。位置合わせの確認には位置マークを使います。">詳細位置設定</summary>
+          <p id="impositionPrintAdvancedHelp" class="imposition-print-advanced-help">列Xは用紙左端から各列の左端まで、行Yは用紙上端から各行の上端までの距離（mm、カンマ区切り）です。「デフォルト位置」で判型・面数に合わせた配置に戻せます（位置補正は残ります）。「位置マーク」をONにすると、ここで指定した位置に位置補正を足した値が紙の端に線で示され、実測してずれを確認できます。</p>
+          <div class="imposition-print-advanced-body">
+            <button id="impositionResetLayoutBtn" type="button" class="imposition-margin-apply-btn" title="判型・縦横・面数から列X・行Yを自動配置。位置補正は残します">デフォルト位置</button>
+            <label class="imposition-label-inline" for="impositionFrontColXMM">表 列X(mm)</label>
+            <input id="impositionFrontColXMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 12,80,148,216" title="表面：各列の左端（紙左端からmm、カンマ区切り）。位置マークの上下辺の線と対応します" />
+            <label class="imposition-label-inline" for="impositionFrontRowYMM">表 行Y(mm)</label>
+            <input id="impositionFrontRowYMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 10,78" title="表面：各行の上端（紙上端からmm、カンマ区切り）。位置マークの左右辺の線と対応します" />
+            <label class="imposition-label-inline" for="impositionBackColXMM">裏 列X(mm)</label>
+            <input id="impositionBackColXMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 12,80,148,216" title="裏面：各列の左端（紙左端からmm、カンマ区切り）。位置マークの上下辺の線と対応します" />
+            <label class="imposition-label-inline" for="impositionBackRowYMM">裏 行Y(mm)</label>
+            <input id="impositionBackRowYMM" type="text" class="imposition-input imposition-pos-input" value="" placeholder="例: 10,78" title="裏面：各行の上端（紙上端からmm、カンマ区切り）。位置マークの左右辺の線と対応します" />
+          </div>
+        </details>
         <p id="impositionPrintDriverNotice" class="imposition-print-driver-notice" hidden></p>
         <div class="imposition-main-options">
           <label class="imposition-check" title="各ページの枠にページ番号と記事名を表示します。折ってページ順を確かめるときはON、仕上がりの見え方を確かめるときはOFFが便利です"><input id="impositionShowPageLabel" type="checkbox" checked /> ページ表記表示</label>
+          <label class="imposition-check" title="詳細位置設定で指定する面付け位置を確認するマークを紙の端に印刷します。通常はオフです。合わせるときだけONにし、合ったあとはOFFに戻すと印刷のじゃまになりません"><input id="impositionShowPositionMarks" type="checkbox" /> 位置マーク</label>
           <label class="imposition-check" title="1枚の紙を8ページに折る台のときにONにします。OFFなら16面付け。地図折りを入力すると自動でOFFになります"><input id="impositionUse8up" type="checkbox" /> 8面付け</label>
           <label class="imposition-check" title="中綴じ（針金留め）の本のときにONにします。外側の折から順に重ねるページ並びで面付けします"><input id="impositionSaddleStitch" type="checkbox" /> 中綴じ（外側から）</label>
           <div class="imposition-mapfold-row">
@@ -312,10 +323,11 @@
         <h4>操作</h4>
         <ul class="help-ref">
           <li>編集：<strong>入力・編集</strong>で .dwml 保存・反映。<strong>台割エディタ</strong>内の <strong>AIお助け</strong>＝Custom GPT（新規／修正／再構成、API不要）。印刷＝台割A4縦。一覧＝表編集・CSV・印刷。<strong>目次起稿</strong>＝見出し＋ノンブル原稿。</li>
-          <li><strong>面付け</strong>：台番は<strong>記載順</strong>で連結。印刷位置は判型選択でデフォルトの列X・行Y（mm）が出て、あとはミリ微調整と拡大率のみ。表のみ／裏のみ＝手動両面向け。セブン＝長辺とじ両面。</li>
+          <li><strong>面付け</strong>：台番は<strong>記載順</strong>で連結。印刷位置は判型選択でデフォルトの列X・行Y（mm）が出て、あとはミリ微調整と拡大率のみ。列X・行Yの個別調整は<strong>詳細位置設定</strong>を開きます。デフォルトは用紙の四辺の空きを M（約6mm）、マスとマスの間を 2M にします（4段なら 4×段の高さ＋上下の 2M＋段間の 6M＝用紙の高さ。列も同じ）。判型の比率で片側が余るときは、端の M はそのまま、余った分だけその方向のマス間が広がります。8面・16面、縦判・横判とも同じです。プリンタで実際に出力して用紙全体がずれるときは、列X・行Yを書き換えず<strong>位置補正X／Y</strong>に mm を入れます（表裏のすべてのマスに足されます。送り方向が上へずれるなら Y に <code>-1.5</code>）。表のみ／裏のみ＝手動両面向け。セブン＝長辺とじ両面。</li>
           <li><strong>ラフ用PPTX出力</strong>：判型2ページ分の横長スライド（例: A4縦→A3横）で見開きラフPPTXを出力。<code>//開き</code> に合わせて左右配置（右開き＝片起こし・最終ページの空白処理あり）。各ページ天側に <code>//大</code>・<code>//中</code>・<code>//小</code> の記事名を表示（同一組み合わせには連番）。PPTX内に管理情報を埋め込み。PowerPointで編集後PDF化し、<strong>PDF読み込み（見開き）</strong>で面付け確認。出力にも<strong>数秒〜数十秒</strong>かかることがあり、処理中は「処理中…」を表示します。</li>
           <li><strong>PPTX更新・出力</strong>：更新ダイアログで「見開きでなく1ページずつ出力」「目次名とページ番号を表示しない」を指定して出力できます。未チェック時は従来どおり見開き出力で、記事が一致する半ページは旧PPTXから形状をコピー（最下位クラス名→上位クラス→連番で照合）。処理中は「処理中…」を表示します。</li>
           <li><strong>PDF読み込み（見開き）</strong>：見開きPDFをノンブル順（1,2,3…）に分割して読み込み。面付けの台指定が <code>1 4 2 3</code> のような変則順でも、各スロットは台割上のページ番号で参照するため正しく対応します（PDFは台割<strong>全体</strong>のページ列が必要）。</li>
+          <li><strong>位置マーク</strong>（面付プレビュー／面付けPDF）：詳細位置設定で指定する面付け位置を確認するマークを紙の端に印刷します。<strong>通常はオフ</strong>です。ONにすると、各列の左端（列X）を用紙の上下の辺に、各行の上端（行Y）を左右の辺に、約6mmの線で示します。線の位置は画面の列X・行Yに位置補正を足した値です。印刷して用紙の端から線までを測り、ずれていれば位置補正X／Yを直します。実寸印刷で端が切れても線が残る長さです。OFFにするとプレビューと面付けPDFの両方から消えます。ON／OFFは次に開いたときも残ります。</li>
           <li><strong>背丁</strong>（面付プレビュー／印刷）：16面で1–16が隣、8面で1–8が隣の折のみ、<strong>折り（背）の中央</strong>に表示。<code>//書名</code>先頭15字＋区切り＋《折り番号》（印刷順に1,2,…）。折位置に薄線（文言部分は線なし・線と字の間に余白）。縦判＝縦組、横判＝横書き。横判16などで隣接しない配置では出ない場合あり。</li>
           <li><strong>地図折り</strong>（16面付け専用）：1枚を16ページに折る配置を自分で決められます。<code>1〜16</code>を<strong>重複なくちょうど16個</strong>、カンマか空白で指定（<code>、</code><code>，</code>も可）。各数字は<strong>台（16ページの折丁）の中の相対ページ位置</strong>（<code>1</code>＝その台の1ページ目）。並び順は<strong>紙面のマス目に置く順</strong>で、<strong>前半8個＝表面／後半8個＝裏面</strong>。各面は縦判＝<strong>4列×2行</strong>（上段を左→右、続けて下段を左→右）、横判＝<strong>2列×4行</strong>（上の行から左→右）で埋めます。入力すると<strong>8面付け・8P折本・ガチャポン本は自動OFF</strong>。例（説明用）：<code>1,16,2,3,4,5,6,7,8,9,10,11,12,13,14,15</code>。</li>
           <li><strong>8P折本</strong>（ワンシートZINE／マジック折）：1枚を8つに折って中央に切り込みを入れて作る簡易製本用の面付です。<strong>縦判のときのみ</strong>使え、<strong>8面付け・地図折り・ガチャポン本とは排他</strong>です。8ページを超える本文でも、16ページ単位の相対ページ位置で同じ並びを繰り返して割り付けます。面付順は <code>//開き</code> に連動し、右開き＝表 <code>1,8,7,6 / 2,3,4,5</code>・裏 <code>9,16,15,14 / 10,11,12,13</code>、左開き＝表 <code>6,7,8,1 / 5,4,3,2</code>・裏 <code>14,15,16,9 / 13,12,11,10</code>。</li>
@@ -353,6 +365,6 @@
       </div>
     </dialog>
 
-    <script src="./app.js?v=gacha-guide-f-20261027d"></script>
+    <script src="./app.js?v=local-mode-20261115c"></script>
   </body>
 </html>

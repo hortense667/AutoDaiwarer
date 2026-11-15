@@ -162,7 +162,7 @@ async function onRequestHead() {
 }
 __name(onRequestHead, "onRequestHead");
 
-// ../.wrangler/tmp/pages-2mPSW6/functionsRoutes-0.5381763419538583.mjs
+// ../.wrangler/tmp/pages-nQ3PQZ/functionsRoutes-0.1086318886072648.mjs
 var routes = [
   {
     routePath: "/api/initial-data",

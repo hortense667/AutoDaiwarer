@@ -1808,6 +1808,13 @@ dialog::backdrop {
   content: "▾ ";
 }
 
+.imposition-print-advanced-help {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
 .imposition-print-advanced-body {
   display: flex;
   flex-wrap: wrap;
@@ -1818,6 +1825,10 @@ dialog::backdrop {
 
 .imposition-scale-input {
   width: 92px;
+}
+
+.imposition-offset-input {
+  width: 72px;
 }
 
 .imposition-pos-input {
@@ -2082,6 +2093,21 @@ dialog::backdrop {
   z-index: 4;
 }
 
+.imposition-fold-edge-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.imposition-fold-edge-marks line {
+  stroke: #111;
+  stroke-width: 1.25px;
+  vector-effect: non-scaling-stroke;
+}
+
 .imposition-gacha-marks .imposition-gacha-guide-label {
   fill: #222;
   stroke: none;
@@ -2235,6 +2261,19 @@ dialog::backdrop {
   padding: 5px 0;
   display: block;
   text-align: center;
+}
+
+/* 中綴じ最外（《1》省略）：折番号分の空きをグレー線が埋める */
+.imposition-spine-mark.is-omit-fold-no .imposition-spine-fold-text {
+  display: none;
+}
+
+.imposition-spine-between-cols.is-omit-fold-no .imposition-spine-core {
+  padding: 2px 0;
+}
+
+.imposition-spine-between-rows.is-omit-fold-no .imposition-spine-core {
+  padding: 0 2px;
 }
 
 /* 行間＝横の折り：ラインは左右セグメント、幅は当該列（台紙の背に相当する幅） */

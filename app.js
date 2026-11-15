@@ -140,6 +140,10 @@ const sessionGateState = {
   customGptUrlJa: "",
   customGptUrlEn: "",
 };
+/** /api/session 成功＝公式ホスト。失敗時はローカル編集のみ（同期等は不可） */
+const siteRuntimeState = {
+  hosted: false,
+};
 const INITIAL_DATA_ENDPOINT = "/api/initial-data";
 const SITE_GATE_TIMEOUT_MS = 5000;
 const INITIAL_DATA_TIMEOUT_MS = 20000;
@@ -166,6 +170,22 @@ const LOCAL_KEY = resolveLocalTextStorageKey();
 const SHARE_BACKUP_KEY_BASE = "autodaiwarer.share-backups";
 const SYNC_INTRO_SHOWN_KEY_BASE = "autodaiwarer.sync.intro-shown";
 const BOARD_WIDTH_KEY = "autodaiwarer.board-width-ratio";
+const IMPOSITION_POSITION_MARKS_KEY = "autodaiwarer.imposition-position-marks";
+
+function readImpositionPositionMarksPref() {
+  try {
+    const raw = localStorage.getItem(IMPOSITION_POSITION_MARKS_KEY);
+    if (raw === "0") return false;
+    if (raw === "1") return true;
+  } catch (_e) {}
+  return false;
+}
+
+function writeImpositionPositionMarksPref(show) {
+  try {
+    localStorage.setItem(IMPOSITION_POSITION_MARKS_KEY, show ? "1" : "0");
+  } catch (_e) {}
+}
 const BOARD_WIDTH_MIN_RATIO = 0.45;
 const BOARD_WIDTH_MAX_RATIO = 1;
 const SEARCH_HIT_CLASS = "search-hit";
@@ -183,7 +203,13 @@ const IMPOSITION_PDFJS_WORKER_SRC = "https://cdnjs.cloudflare.com/ajax/libs/pdf.
 const IMPOSITION_PPTXGENJS_SRC = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
 const IMPOSITION_JSZIP_SRC = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
 const IMPOSITION_PDFLIB_SRC = "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
-const IMPOSITION_PRINT_PDF_DPI = 150;
+// 面付けPDFのドット密度。読み込んだページは、この用紙解像度のマスを満たす大きさで描き直す。
+const IMPOSITION_PRINT_PDF_DPI = 300;
+const IMPOSITION_PDF_PREVIEW_PAGE_WIDTH_PX = 1400;
+const IMPOSITION_PDF_PRINT_SUPERSAMPLE = 1.35;
+const IMPOSITION_PDF_MAX_CANVAS_EDGE_PX = 8192;
+const IMPOSITION_PDF_JPEG_QUALITY_PREVIEW = 0.92;
+const IMPOSITION_PDF_JPEG_QUALITY_PRINT = 0.96;
 const IMPOSITION_MM_TO_PT = 72 / 25.4;
 const ROUGH_PPTX_MANIFEST_PATH = "autodaiwarer/manifest.json";
 const PPTX_EMU_PER_INCH = 914400;
@@ -512,6 +538,7 @@ const state = {
   impositionOptions: {
     targetText: "",
     showPageLabel: true,
+    showPositionMarks: readImpositionPositionMarksPref(),
     mapFoldText: "",
     pdfScalePercent: 100,
     use8up: false,
@@ -618,6 +645,7 @@ const els = {
   impositionDialog: document.querySelector("#impositionDialog"),
   impositionBoardInput: document.querySelector("#impositionBoardInput"),
   impositionShowPageLabel: document.querySelector("#impositionShowPageLabel"),
+  impositionShowPositionMarks: document.querySelector("#impositionShowPositionMarks"),
   impositionUse8up: document.querySelector("#impositionUse8up"),
   impositionMapFoldInput: document.querySelector("#impositionMapFoldInput"),
   impositionUse8pBooklet: document.querySelector("#impositionUse8pBooklet"),
@@ -637,6 +665,8 @@ const els = {
   impositionLoadSpreadPdfBtn: document.querySelector("#impositionLoadSpreadPdfBtn"),
   impositionPdfName: document.querySelector("#impositionPdfName"),
   impositionPdfScalePercent: document.querySelector("#impositionPdfScalePercent"),
+  impositionPrintOffsetX: document.querySelector("#impositionPrintOffsetX"),
+  impositionPrintOffsetY: document.querySelector("#impositionPrintOffsetY"),
   impositionPrintPaperSize: document.querySelector("#impositionPrintPaperSize"),
   impositionPrintDriverNotice: document.querySelector("#impositionPrintDriverNotice"),
   impositionFrontColXMM: document.querySelector("#impositionFrontColXMM"),
@@ -748,17 +778,41 @@ function formatBackupTimestamp(ts) {
 
 init();
 
+function isHostedRuntime() {
+  return siteRuntimeState.hosted === true;
+}
+
+function serverOnlyFeatureMessage() {
+  return LOCALE === "en"
+    ? "Sync, Drive bootstrap, and bug reports are only available when you open this app from the official hosted site. A local launch supports flatplan editing only."
+    : "同期・Drive読み込み・バグレポートなどは、公式サイト（サーバー経由）から起動したときのみ利用できます。ローカル起動では台割の編集のみ行えます。";
+}
+
+function notifyServerOnlyFeature() {
+  window.alert(serverOnlyFeatureMessage());
+}
+
 async function init() {
   void initBannerRotator();
   applyLocaleUI();
   applyBoardWidthFromStorage();
   const gate = await verifySiteAccess();
-  if (!gate.ok) {
-    renderSiteAccessBlocked(gate.message);
-    return;
+  let driveText = null;
+  if (gate.ok) {
+    siteRuntimeState.hosted = true;
+    applySessionGateResult(gate);
+    driveText = await fetchInitialTextIfAny(gate.driveFileId);
   }
-  applySessionGateResult(gate);
-  const driveText = await fetchInitialTextIfAny(gate.driveFileId);
+  else {
+    // ローカル起動: ゲート失敗でも編集は続行。同期等はサーバー起動時のみ。
+    siteRuntimeState.hosted = false;
+    remoteSyncState.enabled = false;
+    const wantsServerFeature = REMOTE_SYNC_ENABLED
+      || Boolean((SEARCH_PARAMS.get("data") || "").trim());
+    if (wantsServerFeature) {
+      notifyServerOnlyFeature();
+    }
+  }
   const stored = localStorage.getItem(LOCAL_KEY) || localStorage.getItem(LOCAL_KEY_BASE);
   const normalizedStored = typeof stored === "string" ? normalizeEditorDirectiveText(stored) : "";
   const normalizedLegacySampleJa = normalizeEditorDirectiveText(DEFAULT_TEXT);
@@ -2259,28 +2313,48 @@ function applyLocaleUI() {
   );
   setText("#impositionPdfName", "No PDF loaded");
   setText("label[for='impositionPdfScalePercent']", "Scale (%)");
+  setText("label[for='impositionPrintOffsetX']", "Shift X (mm)");
+  setText("label[for='impositionPrintOffsetY']", "Shift Y (mm)");
   setText("label[for='impositionPrintPaperSize']", "Print paper");
   setText("label[for='impositionFrontColXMM']", "Front col X (mm)");
   setText("label[for='impositionFrontRowYMM']", "Front row Y (mm)");
   setText("label[for='impositionBackColXMM']", "Back col X (mm)");
   setText("label[for='impositionBackRowYMM']", "Back row Y (mm)");
   setText("#impositionResetLayoutBtn", "Reset positions");
+  setText("#impositionPrintAdvancedSummary", "Advanced position");
   const impBasic = document.querySelector(".imposition-print-basic");
   if (impBasic) impBasic.setAttribute("aria-label", "Imposition print (position)");
   const tipPaper = document.querySelector("#impositionPrintPaperSize");
   const tipPdfScale = document.querySelector("#impositionPdfScalePercent");
+  const tipOffsetX = document.querySelector("#impositionPrintOffsetX");
+  const tipOffsetY = document.querySelector("#impositionPrintOffsetY");
   const tipFrontCols = document.querySelector("#impositionFrontColXMM");
   const tipFrontRows = document.querySelector("#impositionFrontRowYMM");
   const tipBackCols = document.querySelector("#impositionBackColXMM");
   const tipBackRows = document.querySelector("#impositionBackRowYMM");
   const tipReset = document.querySelector("#impositionResetLayoutBtn");
+  const tipAdvancedSummary = document.querySelector("#impositionPrintAdvancedSummary");
+  const tipAdvancedHelp = document.querySelector("#impositionPrintAdvancedHelp");
   if (tipPaper) tipPaper.title = "Paper size for imposition print (actual size). Changing resets column/row positions to defaults for both 8-up and 16-up.";
   if (tipPdfScale) tipPdfScale.title = "Scale PDF content within each imposition slot.";
-  if (tipFrontCols) tipFrontCols.title = "Front: left edge of each column from paper left edge (mm, CSV).";
-  if (tipFrontRows) tipFrontRows.title = "Front: top edge of each row from paper top edge (mm, CSV).";
-  if (tipBackCols) tipBackCols.title = "Back: left edge of each column from paper left edge (mm, CSV).";
-  if (tipBackRows) tipBackRows.title = "Back: top edge of each row from paper top edge (mm, CSV).";
-  if (tipReset) tipReset.title = "Recompute column X / row Y from paper, trim, and up count.";
+  if (tipOffsetX) tipOffsetX.title = "Use when the printed output is shifted left/right on a real printer. Added to every column on both sides; column X values stay unchanged. Positive moves right, negative moves left.";
+  if (tipOffsetY) tipOffsetY.title = "Use when the printed output is shifted up/down (feed direction) on a real printer. Added to every row on both sides; row Y values stay unchanged. Negative (e.g. -1.5) moves up, positive moves down.";
+  const tipOffsetXLabel = document.querySelector("label[for='impositionPrintOffsetX']");
+  const tipOffsetYLabel = document.querySelector("label[for='impositionPrintOffsetY']");
+  if (tipOffsetXLabel) tipOffsetXLabel.title = tipOffsetX?.title || "";
+  if (tipOffsetYLabel) tipOffsetYLabel.title = tipOffsetY?.title || "";
+  if (tipFrontCols) tipFrontCols.title = "Front: left edge of each column from paper left edge (mm, CSV). Matches the top/bottom position-mark ticks.";
+  if (tipFrontRows) tipFrontRows.title = "Front: top edge of each row from paper top edge (mm, CSV). Matches the left/right position-mark ticks.";
+  if (tipBackCols) tipBackCols.title = "Back: left edge of each column from paper left edge (mm, CSV). Matches the top/bottom position-mark ticks.";
+  if (tipBackRows) tipBackRows.title = "Back: top edge of each row from paper top edge (mm, CSV). Matches the left/right position-mark ticks.";
+  if (tipReset) tipReset.title = "Recompute column X / row Y from paper, trim, and up count. Shift X / Y is kept.";
+  if (tipAdvancedSummary) {
+    tipAdvancedSummary.title = "Fine-tune front/back column X and row Y. Defaults are usually enough. Use Position marks to verify placement.";
+  }
+  if (tipAdvancedHelp) {
+    tipAdvancedHelp.textContent =
+      "Column X is the distance from the paper's left edge to each column's left edge; row Y is from the top edge to each row's top edge (mm, CSV). Reset positions restores the layout for the current paper and up count (Shift X / Y is kept). Turn on Position marks to show these values plus Shift X / Y as ticks on the sheet edges for measuring.";
+  }
   // ラベル本文だけを差し替える（textContent の代入はチェックボックス自体を消してしまう）。
   const setCheckLabel = (input, text, title) => {
     const label = input?.closest("label");
@@ -2294,6 +2368,11 @@ function applyLocaleUI() {
     els.impositionShowPageLabel,
     "Show page labels",
     "Show the page number and article name in each slot. Handy when folding to check page order; turn it off to review the finished look."
+  );
+  setCheckLabel(
+    els.impositionShowPositionMarks,
+    "Position marks",
+    "Print edge marks that verify the imposition positions set under Advanced position. Normally off. Turn on only while aligning, then off again so the marks stay out of the print."
   );
   setCheckLabel(
     els.impositionUse8up,
@@ -2377,15 +2456,17 @@ function applyLocaleUI() {
       </ul>
       <h4>Hosted app (<code>/api/session</code>)</h4>
       <ul class="help-ref">
+        <li>Local folder / static open works for editing. Sync, Drive bootstrap, and bug reports need the official hosted site.</li>
         <li><code>uiTheme</code>, Drive <code>data</code>, <code>share</code>/<code>syncEndpoint</code> → <code>USAGE.md</code>.</li>
       </ul>
       <h4>Actions</h4>
       <ul class="help-ref">
         <li>Editor: save .dwml, Close applies. <strong>Print</strong> = A4 board. List = table, CSV, print.</li>
-        <li><strong>Imposition</strong>: boards in <strong>typed order</strong>. Print placement = paper preset for col X / row Y (mm), then fine-tune mm + scale. Front/Back only for simplex. Seven-Eleven: long-edge duplex.</li>
+        <li><strong>Imposition</strong>: boards in <strong>typed order</strong>. Print placement = paper preset for col X / row Y (mm), then fine-tune mm + scale. Open <strong>Advanced position</strong> to edit column X / row Y individually. Defaults keep about 6mm (M) at every sheet edge and 2M between slots (four rows: 4×row height + 2M top/bottom + 6M between rows = paper height). Extra room on one axis widens only the gaps on that axis. When real printer output shifts the whole sheet, set <strong>Shift X / Y</strong> instead of editing every coordinate (added to every slot on both sides; Y <code>-1.5</code> moves the sheet up). Front/Back only for simplex. Seven-Eleven: long-edge duplex.</li>
         <li><strong>Export Rough PPTX</strong>: spread rough PPTX with a slide width of two trim pages (e.g. A4 portrait → A3 landscape), laid out per <code>//opening</code> (right opening = kata-okoshi / 片起こし). Page headers show <code>//large</code>, <code>//middle</code>, and <code>//small</code> article names; duplicate combinations get a serial number. Metadata is embedded in the PPTX. Edit in PowerPoint, export to PDF, then use <strong>Load PDF (spread)</strong>. Export may take <strong>several seconds to tens of seconds</strong>; a <strong>Processing…</strong> overlay is shown until finished.</li>
         <li><strong>Update / Export PPTX</strong>: opens an options dialog with <strong>single-page output</strong> and <strong>hide TOC/page labels</strong>. With no checks, behavior is the same as spread update. Matching pages copy edited shapes from the source PPTX (bottom article level → upper levels → serial number). A <strong>Processing…</strong> overlay is shown until finished.</li>
         <li><strong>Load PDF (spread)</strong>: splits spread PDFs into single pages in flatplan order (1, 2, 3…). Irregular board selection (e.g. <code>1 4 2 3</code>) still maps each slot by its global page number; the PDF must contain the <strong>full</strong> flatplan page sequence.</li>
+        <li><strong>Position marks</strong>: edge marks that verify the imposition positions set under Advanced position. <strong>Normally off</strong>. When on, about 6mm ticks appear on the sheet edges at each column X (top and bottom) and each row Y (left and right), including Shift X / Y. Measure from the paper edge to the tick and adjust Shift X / Y. Long enough to stay inside a typical printer's unprintable margin. Off removes them from the preview and the imposition PDF. The choice is remembered next time.</li>
         <li><strong>Spine marks</strong>: when pages <strong>1–16</strong> (16-up) or <strong>1–8</strong> (8-up) are <strong>adjacent</strong> on the rendered grid, centered on the fold. <code>//title</code> (first 15 graphemes) + fold index in 《…》, numbered in print order. Light fold line with a clear gap around type. Portrait = vertical type; landscape = horizontal. Some layouts (e.g. horizontal 16-up) may omit marks.</li>
         <li>List Cancel discards; backdrop does not close. Drag-and-drop on the board.</li>
       </ul>
@@ -2794,6 +2875,12 @@ function bindUI() {
     state.impositionOptions.showPageLabel = Boolean(els.impositionShowPageLabel?.checked);
     void renderImpositionPreview();
   });
+  els.impositionShowPositionMarks?.addEventListener("change", () => {
+    const show = Boolean(els.impositionShowPositionMarks?.checked);
+    state.impositionOptions.showPositionMarks = show;
+    writeImpositionPositionMarksPref(show);
+    void renderImpositionPreview();
+  });
   els.impositionUse8up?.addEventListener("change", () => {
     const nextUse8up = Boolean(els.impositionUse8up?.checked);
     if (nextUse8up && hasImpositionMapFoldText(state.impositionOptions.mapFoldText)) {
@@ -2828,7 +2915,12 @@ function bindUI() {
       && hasImpositionPosList(targetLayoutRaw?.backRowYMMText, targetShape.rows);
     const seeded = useStoredPositions
       ? normalizeImpositionPrintLayout(
-        { ...targetLayoutRaw, printPaperSize: currentPaperSize, pdfScalePercent: scale },
+        {
+          ...targetLayoutRaw,
+          printPaperSize: currentPaperSize,
+          pdfScalePercent: scale,
+          ...impositionPrintOffsetFromInputs(),
+        },
         targetShape,
       )
       : buildDefaultImpositionPrintLayout({
@@ -2837,6 +2929,7 @@ function bindUI() {
         use8up: nextUse8up,
         horizontalTrim,
         trimText: getEffectiveTrimSizeText(state.meta),
+        ...impositionPrintOffsetFromInputs(),
       });
     if (nextUse8up) {
       state.meta.impositionPrint8Up = seeded;
@@ -2907,6 +3000,12 @@ function bindUI() {
     applyImpositionPrintLayoutInputsToMeta();
     void renderImpositionPreview();
   });
+  const onImpositionPrintOffsetInput = () => {
+    applyImpositionPrintLayoutInputsToMeta();
+    void renderImpositionPreview();
+  };
+  els.impositionPrintOffsetX?.addEventListener("input", onImpositionPrintOffsetInput);
+  els.impositionPrintOffsetY?.addEventListener("input", onImpositionPrintOffsetInput);
   els.impositionPrintPaperSize?.addEventListener("change", () => {
     // 8面／16面は別保存のため、判型変更時は両方を現判型のデフォルト位置へ揃える。
     resetImpositionPrintLayoutToDefaults({ keepPaperSize: true, bothModes: true });
@@ -3210,6 +3309,10 @@ function updateBugReportCounter() {
 }
 
 function openBugReportDialog() {
+  if (!isHostedRuntime()) {
+    notifyServerOnlyFeature();
+    return;
+  }
   if (!bugReportState.endpoint) {
     window.alert(
       LOCALE === "en"
@@ -3409,6 +3512,8 @@ function syncImpositionDialogInputsFromMeta() {
     state.meta.impositionPrint16Up = ip;
   }
   if (els.impositionPdfScalePercent) els.impositionPdfScalePercent.value = String(ip.pdfScalePercent);
+  if (els.impositionPrintOffsetX) els.impositionPrintOffsetX.value = String(ip.printOffsetXMM ?? 0);
+  if (els.impositionPrintOffsetY) els.impositionPrintOffsetY.value = String(ip.printOffsetYMM ?? 0);
   if (els.impositionPrintPaperSize) els.impositionPrintPaperSize.value = ip.printPaperSize;
   if (els.impositionFrontColXMM) els.impositionFrontColXMM.value = String(ip.frontColXMMText || "");
   if (els.impositionFrontRowYMM) els.impositionFrontRowYMM.value = String(ip.frontRowYMMText || "");
@@ -3440,9 +3545,11 @@ function applyImpositionPrintLayoutInputsToMeta() {
     Boolean(state.impositionOptions.use8up),
     isHorizontalTrimSize(state.meta?.trimSize),
   );
+  const offset = impositionPrintOffsetFromInputs();
   const next = normalizeImpositionPrintLayout({
     printPaperSize: els.impositionPrintPaperSize?.value,
     pdfScalePercent: els.impositionPdfScalePercent?.value,
+    ...offset,
     frontColXMMText: els.impositionFrontColXMM?.value,
     frontRowYMMText: els.impositionFrontRowYMM?.value,
     backColXMMText: els.impositionBackColXMM?.value,
@@ -3452,6 +3559,10 @@ function applyImpositionPrintLayoutInputsToMeta() {
     state.meta.impositionPrint8Up = next;
   } else {
     state.meta.impositionPrint16Up = next;
+  }
+  for (const key of ["impositionPrint8Up", "impositionPrint16Up"]) {
+    if (!state.meta[key]) continue;
+    state.meta[key] = { ...state.meta[key], ...offset };
   }
   state.impositionOptions.pdfScalePercent = next.pdfScalePercent;
   if (els.impositionPdfScalePercent) els.impositionPdfScalePercent.value = String(next.pdfScalePercent);
@@ -3468,6 +3579,7 @@ function resetImpositionPrintLayoutToDefaults(options = {}) {
   if (!state.meta) state.meta = {};
   const keepPaper = Boolean(options.keepPaperSize);
   const bothModes = Boolean(options.bothModes);
+  const offset = impositionPrintOffsetFromInputs();
   const paperSize = keepPaper
     ? normalizeImpositionPrintPaperSize(
       els.impositionPrintPaperSize?.value
@@ -3484,6 +3596,7 @@ function resetImpositionPrintLayoutToDefaults(options = {}) {
   const buildForMode = (use8up) => buildDefaultImpositionPrintLayout({
     printPaperSize: paperSize,
     pdfScalePercent: scale,
+    ...offset,
     use8up: Boolean(use8up),
     horizontalTrim,
     trimText,
@@ -3496,11 +3609,17 @@ function resetImpositionPrintLayoutToDefaults(options = {}) {
   } else {
     state.meta.impositionPrint16Up = buildForMode(false);
   }
+  for (const key of ["impositionPrint8Up", "impositionPrint16Up"]) {
+    if (!state.meta[key]) continue;
+    state.meta[key] = { ...state.meta[key], ...offset };
+  }
   const next = state.impositionOptions.use8up
     ? state.meta.impositionPrint8Up
     : state.meta.impositionPrint16Up;
   state.impositionOptions.pdfScalePercent = next.pdfScalePercent;
   if (els.impositionPdfScalePercent) els.impositionPdfScalePercent.value = String(next.pdfScalePercent);
+  if (els.impositionPrintOffsetX) els.impositionPrintOffsetX.value = String(next.printOffsetXMM ?? 0);
+  if (els.impositionPrintOffsetY) els.impositionPrintOffsetY.value = String(next.printOffsetYMM ?? 0);
   if (els.impositionPrintPaperSize) els.impositionPrintPaperSize.value = next.printPaperSize;
   if (els.impositionFrontColXMM) els.impositionFrontColXMM.value = String(next.frontColXMMText || "");
   if (els.impositionFrontRowYMM) els.impositionFrontRowYMM.value = String(next.frontRowYMMText || "");
@@ -3518,6 +3637,8 @@ function saveImpositionPrintParamsToWorkingText() {
   const merged = upsertImpositionPrintLine(base, state.meta);
   const normalized = normalizeEditorDirectiveText(merged);
   loadFromText(normalized);
+  // loadFromText 後も面付けダイアログの入力欄を meta と同期（プレビューとズレないように）
+  syncImpositionDialogInputsFromMeta();
   if (els.editorText && els.editorDialog?.open) {
     els.editorText.value = normalized;
     state.editorSnapshotText = normalized;
@@ -3558,6 +3679,9 @@ async function openImpositionDialog() {
   }
   if (els.impositionShowPageLabel) {
     els.impositionShowPageLabel.checked = Boolean(state.impositionOptions.showPageLabel);
+  }
+  if (els.impositionShowPositionMarks) {
+    els.impositionShowPositionMarks.checked = Boolean(state.impositionOptions.showPositionMarks);
   }
   if (els.impositionUse8up) {
     els.impositionUse8up.checked = Boolean(state.impositionOptions.use8up);
@@ -3781,6 +3905,7 @@ async function buildImpositionRenderResult(buildOptions = {}) {
   const sheetCollector = buildOptions.collectSheets ? [] : null;
   const options = {
     showPageLabel: Boolean(state.impositionOptions.showPageLabel),
+    showPositionMarks: Boolean(state.impositionOptions.showPositionMarks),
     hasPdf: hasImpositionPdfLoaded(),
     pdfScalePercent: ip.pdfScalePercent,
     impositionPrintLayout: ip,
@@ -4235,7 +4360,9 @@ function renderImpositionSidePageHtml(boardLabel, sideLabel, rows, halfMode, sid
       sideKind: String(sideKind || ""),
       rotateWhole,
       showPageLabel: Boolean(options.showPageLabel),
+      showPositionMarks: Boolean(options.showPositionMarks),
       spineFixedNo: options.spineFixedNo,
+      saddleStitch: Boolean(options.saddleStitch),
       use8up: Boolean(options.use8up),
       useGachaBook: Boolean(options.useGachaBook),
       horizontalTrim: Boolean(options.horizontalTrim),
@@ -4384,6 +4511,11 @@ function consumeImpositionSpineFoldNo(options = {}) {
   return out;
 }
 
+/** 中綴じのいちばん外側（《1》）だけ折番号を省略し、グレー線を延長する */
+function shouldOmitImpositionSpineFoldNumber(foldNo, options = {}) {
+  return Boolean(options.saddleStitch) && Number(foldNo) === 1;
+}
+
 function renderImpositionSpineMarkElement(placement, options) {
   if (!placement) return "";
   const fixedNo = Number(options?.spineFixedNo);
@@ -4394,18 +4526,76 @@ function renderImpositionSpineMarkElement(placement, options) {
     foldNo = counter.n;
     counter.n += 1;
   }
+  const omitFoldNo = shouldOmitImpositionSpineFoldNumber(foldNo, options);
   const titleShort = getImpositionSpineTitleShort(state.meta);
   // 列間（縦の折り目）は縦組み、行間（横の折り目）は横組み。
   const verticalText = placement.kind === "between-cols";
-  const modeClass = verticalText ? "imposition-spine-portrait" : "imposition-spine-landscape";
+  const modeClass = `${verticalText ? "imposition-spine-portrait" : "imposition-spine-landscape"}${omitFoldNo ? " is-omit-fold-no" : ""}`;
   const titleEsc = escapeHtml(titleShort);
-  const foldEsc = escapeHtml(`《${foldNo}》`);
-  const titleAttrEsc = escapeHtml(`${titleShort} 《${foldNo}》`);
-  const inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span><span class="imposition-spine-fold-text">${foldEsc}</span></span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
+  const foldEsc = omitFoldNo ? "" : escapeHtml(`《${foldNo}》`);
+  const titleAttrEsc = escapeHtml(omitFoldNo ? titleShort : `${titleShort} 《${foldNo}》`);
+  const foldHtml = omitFoldNo ? "" : `<span class="imposition-spine-fold-text">${foldEsc}</span>`;
+  const inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span>${foldHtml}</span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
   if (placement.kind === "between-cols") {
     return `<div class="imposition-spine-mark imposition-spine-between-cols ${modeClass}" style="--spine-k:${Number(placement.k)};" title="${titleAttrEsc}">${inner}</div>`;
   }
   return `<div class="imposition-spine-mark imposition-spine-between-rows ${modeClass}" style="--spine-c:${Number(placement.c)};" title="${titleAttrEsc}">${inner}</div>`;
+}
+
+/** 各列の左端（列X）を上下の辺へ、各行の上端（行Y）を左右の辺へ、約6mmの線で示す。位置補正込み。 */
+function impositionFoldEdgeMarkSegmentsMm(geometry) {
+  const paperW = Number(geometry?.pageWidthMm) || 0;
+  const paperH = Number(geometry?.pageHeightMm) || 0;
+  const colX = Array.isArray(geometry?.colXMM) ? geometry.colXMM : [];
+  const rowY = Array.isArray(geometry?.rowYMM) ? geometry.rowYMM : [];
+  if (!(paperW > 0) || !(paperH > 0)) return [];
+  const len = IMPOSITION_FOLD_EDGE_MARK_MM;
+  const inset = IMPOSITION_FOLD_EDGE_MARK_STROKE_MM / 2;
+  const segs = [];
+  const pushVertical = (markX) => {
+    if (!Number.isFinite(markX) || markX <= inset || markX >= paperW - inset) return;
+    const top = inset;
+    const bottom = paperH - inset;
+    segs.push([markX, top, markX, Math.min(bottom, top + len)]);
+    segs.push([markX, Math.max(top, bottom - len), markX, bottom]);
+  };
+  const pushHorizontal = (markY) => {
+    if (!Number.isFinite(markY) || markY <= inset || markY >= paperH - inset) return;
+    const left = inset;
+    const right = paperW - inset;
+    segs.push([left, markY, Math.min(right, left + len), markY]);
+    segs.push([Math.max(left, right - len), markY, right, markY]);
+  };
+  for (const x of colX) pushVertical(Number(x));
+  for (const y of rowY) pushHorizontal(Number(y));
+  return segs;
+}
+
+function renderImpositionFoldEdgeMarksSvg(geometry) {
+  const segs = impositionFoldEdgeMarkSegmentsMm(geometry);
+  if (!segs.length) return "";
+  const paperW = geometry.pageWidthMm;
+  const paperH = geometry.pageHeightMm;
+  const lines = segs
+    .map((seg) => `<line x1="${seg[0]}" y1="${seg[1]}" x2="${seg[2]}" y2="${seg[3]}" />`)
+    .join("");
+  return `<svg class="imposition-fold-edge-marks" viewBox="0 0 ${paperW} ${paperH}" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke="#111" stroke-width="${IMPOSITION_FOLD_EDGE_MARK_STROKE_MM}" stroke-linecap="butt">${lines}</g></svg>`;
+}
+
+function drawImpositionFoldEdgeMarksOnCanvas(ctx, geometry) {
+  const segs = impositionFoldEdgeMarkSegmentsMm(geometry);
+  if (!segs.length) return;
+  ctx.save();
+  ctx.strokeStyle = "#111111";
+  ctx.lineWidth = Math.max(1, mmToPxForImpositionPrint(IMPOSITION_FOLD_EDGE_MARK_STROKE_MM));
+  ctx.lineCap = "butt";
+  ctx.beginPath();
+  for (const seg of segs) {
+    ctx.moveTo(mmToPxForImpositionPrint(seg[0]), mmToPxForImpositionPrint(seg[1]));
+    ctx.lineTo(mmToPxForImpositionPrint(seg[2]), mmToPxForImpositionPrint(seg[3]));
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 
 function renderImpositionGridHtml(rows, options = {}, layoutFlags = {}) {
@@ -4502,7 +4692,10 @@ function renderImpositionGridHtml(rows, options = {}, layoutFlags = {}) {
       geometry,
     );
   }
-  return `<div class="imposition-grid abs-mode ${gacha ? "is-gacha" : ""} ${hasPdf ? "pdf-mode" : ""} ${layoutFlags.rotateWhole ? "rotate-whole-180" : ""}" style="--imposition-pdf-scale:${pdfScale};--imposition-pdf-print-size:${pdfPrintSize};--imposition-grid-cols:${colCount};--imposition-paper-w:${paperW};--imposition-paper-h:${paperH};aspect-ratio:${paperW} / ${paperH};">${body}${spineHtml}${marksHtml}</div>`;
+  const foldEdgeHtml = options.showPositionMarks
+    ? renderImpositionFoldEdgeMarksSvg(geometry)
+    : "";
+  return `<div class="imposition-grid abs-mode ${gacha ? "is-gacha" : ""} ${hasPdf ? "pdf-mode" : ""} ${layoutFlags.rotateWhole ? "rotate-whole-180" : ""}" style="--imposition-pdf-scale:${pdfScale};--imposition-pdf-print-size:${pdfPrintSize};--imposition-grid-cols:${colCount};--imposition-paper-w:${paperW};--imposition-paper-h:${paperH};aspect-ratio:${paperW} / ${paperH};">${body}${spineHtml}${marksHtml}${foldEdgeHtml}</div>`;
 }
 
 function renderImpositionSpineMarkElementAbsolute(placement, options, geometry) {
@@ -4514,12 +4707,19 @@ function renderImpositionSpineMarkElementAbsolute(placement, options, geometry) 
     foldNo = Number(counter.n) || 1;
     if (!lineOnly) counter.n += 1;
   }
+  const omitFoldNo = !lineOnly && shouldOmitImpositionSpineFoldNumber(foldNo, options);
   const titleShort = getImpositionSpineTitleShort(state.meta);
   const verticalText = placement.kind === "between-cols";
-  const modeClass = `${verticalText ? "imposition-spine-portrait" : "imposition-spine-landscape"}${lineOnly ? " is-line-only" : ""}`;
+  const modeClass = `${verticalText ? "imposition-spine-portrait" : "imposition-spine-landscape"}${lineOnly ? " is-line-only" : ""}${omitFoldNo ? " is-omit-fold-no" : ""}`;
   const titleEsc = escapeHtml(titleShort);
-  const foldEsc = escapeHtml(`《${foldNo}》`);
-  const titleAttrEsc = escapeHtml(lineOnly ? (LOCALE === "en" ? "Spine fold" : "背の折り位置") : `${titleShort} 《${foldNo}》`);
+  const foldEsc = omitFoldNo ? "" : escapeHtml(`《${foldNo}》`);
+  const foldHtml = omitFoldNo ? "" : `<span class="imposition-spine-fold-text">${foldEsc}</span>`;
+  const titleAttrEsc = escapeHtml(
+    lineOnly
+      ? (LOCALE === "en" ? "Spine fold" : "背の折り位置")
+      : (omitFoldNo ? titleShort : `${titleShort} 《${foldNo}》`),
+  );
+  const labeledInner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span>${foldHtml}</span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
   const gacha = geometry?.gacha && !geometry.gacha.error ? geometry.gacha : null;
   const paperW = geometry.pageWidthMm;
   const paperH = geometry.pageHeightMm;
@@ -4551,13 +4751,13 @@ function renderImpositionSpineMarkElementAbsolute(placement, options, geometry) 
     } else if (lineOnly) {
       inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
     } else {
-      inner = `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span><span class="imposition-spine-fold-text">${foldEsc}</span></span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
+      inner = labeledInner;
     }
     return `<div class="imposition-spine-mark imposition-spine-between-cols abs-pos ${modeClass}${gapClass}" style="left:${leftPct.toFixed(4)}%;top:${topPct.toFixed(4)}%;height:${heightPct.toFixed(4)}%;" title="${titleAttrEsc}">${inner}</div>`;
   }
   const inner = lineOnly
     ? `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`
-    : `<span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span><span class="imposition-spine-core${verticalText ? " imposition-spine-vertical" : ""}"><span class="imposition-spine-title-text">${titleEsc}</span><span class="imposition-spine-fold-text">${foldEsc}</span></span><span class="imposition-spine-line imposition-spine-line-seg" aria-hidden="true"></span>`;
+    : labeledInner;
   const c = Number(placement.c);
   const upper = Number(placement.upperRow);
   const y0 = Number(rowY[upper]) || 0;
@@ -4614,6 +4814,19 @@ function normalizeImpositionPdfScalePercent(raw) {
   return Math.max(10, Math.min(300, Math.round(n)));
 }
 
+function normalizeImpositionPrintOffsetMm(raw) {
+  const n = Number.parseFloat(String(raw ?? ""));
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(Math.max(-40, Math.min(40, n)) * 100) / 100;
+}
+
+function impositionPrintOffsetFromInputs() {
+  return {
+    printOffsetXMM: normalizeImpositionPrintOffsetMm(els.impositionPrintOffsetX?.value),
+    printOffsetYMM: normalizeImpositionPrintOffsetMm(els.impositionPrintOffsetY?.value),
+  };
+}
+
 function toImpositionPdfRenderScale(percent) {
   const p = normalizeImpositionPdfScalePercent(percent);
   return `${(p / 100).toFixed(4)}`;
@@ -4622,6 +4835,8 @@ function toImpositionPdfRenderScale(percent) {
 const DEFAULT_IMPOSITION_PRINT_LAYOUT = Object.freeze({
   printPaperSize: "A4",
   pdfScalePercent: 100,
+  printOffsetXMM: 0,
+  printOffsetYMM: 0,
   frontColXMMText: "",
   frontRowYMMText: "",
   backColXMMText: "",
@@ -4637,8 +4852,11 @@ const IMPOSITION_PRINT_PAPER_PRESETS_MM = Object.freeze({
   B4: { widthMm: 257, heightMm: 364 },
 });
 
-/** デフォルト配置時の最小外周余白（mm） */
-const IMPOSITION_DEFAULT_OUTER_MARGIN_MM = 8;
+/** デフォルト配置の端の空き M（mm）。隣り合うマスの間は 2M。 */
+const IMPOSITION_DEFAULT_OUTER_MARGIN_MM = 6;
+/** 用紙外周に出す列X・行Yマークの長さ（mm） */
+const IMPOSITION_FOLD_EDGE_MARK_MM = 6;
+const IMPOSITION_FOLD_EDGE_MARK_STROKE_MM = 0.3;
 
 function normalizeImpositionPrintPaperSize(raw) {
   const s = String(raw || "").trim().toUpperCase();
@@ -5330,11 +5548,15 @@ function parseImpositionPosMmList(text, count) {
   return out;
 }
 
-function hasImpositionPosList(text, _expectedCount) {
+function hasImpositionPosList(text, expectedCount = 0) {
   const raw = String(text ?? "").trim();
   if (!raw || raw === "-") return false;
   const parts = raw.split(/[,\s、，]+/).map((x) => x.trim()).filter(Boolean);
-  return parts.some((token) => Number.isFinite(Number.parseFloat(token)));
+  const nums = parts.filter((token) => Number.isFinite(Number.parseFloat(token)));
+  if (nums.length === 0) return false;
+  // 横判16面は行が4つ必要。不足分を「ある」とみなすと下段が重なって消える。
+  if (expectedCount > 0 && nums.length < expectedCount) return false;
+  return true;
 }
 
 function resolveImpositionPrintPageLayout(paperSizeRaw, use8up, horizontalTrim, _saddleStitch = false) {
@@ -5372,32 +5594,70 @@ function resolveImpositionPrintPageLayout(paperSizeRaw, use8up, horizontalTrim, 
   };
 }
 
+function roundImpositionMm(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+/**
+ * 端の空きを M、隣り合うマスの間を 2M としてマスを収める。
+ * 4段なら 4*N + 2*M（上下） + 6*M（段の間が3つ×2M） = 用紙の高さ。
+ * 列も同じ。判型比で片側が余るときは端の M を保ち、余った分だけその方向のマス間を広げる。
+ */
+function fitImpositionCellMm(pageW, pageH, cols, rows, trimW, trimH) {
+  const colCount = Math.max(1, cols);
+  const rowCount = Math.max(1, rows);
+  const edge = IMPOSITION_DEFAULT_OUTER_MARGIN_MM;
+  let cellW = Math.max(1, Number(trimW) || 1);
+  let cellH = Math.max(1, Number(trimH) || 1);
+  const reservedX = 2 * colCount * edge;
+  const reservedY = 2 * rowCount * edge;
+  const availW = pageW - reservedX;
+  const availH = pageH - reservedY;
+  let fit = 1;
+  if (availW > 0 && availH > 0) {
+    fit = Math.min(1, (availW / colCount) / cellW, (availH / rowCount) / cellH);
+  } else {
+    fit = Math.min(1, (pageW / colCount) / cellW, (pageH / rowCount) / cellH);
+  }
+  cellW = roundImpositionMm(cellW * fit);
+  cellH = roundImpositionMm(cellH * fit);
+  return { cellWidthMm: Math.max(1, cellW), cellHeightMm: Math.max(1, cellH), edgeMm: edge };
+}
+
+function impositionAxisPositionsMm(pageMm, count, cellMm, edgeMm) {
+  const n = Math.max(1, count);
+  const cell = Math.max(0, Number(cellMm) || 0);
+  const edge = Math.max(0, Number(edgeMm) || 0);
+  const leftover = pageMm - n * cell;
+  const gapCount = n - 1;
+  let margin = edge;
+  if (gapCount === 0) {
+    margin = Math.max(0, leftover / 2);
+  } else {
+    const gapTotal = leftover - 2 * edge;
+    if (gapTotal >= 0) {
+      margin = edge;
+    } else {
+      margin = Math.max(0, leftover / (2 * n));
+    }
+  }
+  const gap = gapCount > 0 ? Math.max(0, (leftover - 2 * margin) / gapCount) : 0;
+  const positions = [];
+  for (let i = 0; i < n; i += 1) {
+    positions.push(roundImpositionMm(margin + i * (cell + gap)));
+  }
+  return positions;
+}
+
 function computeDefaultImpositionPositions(pageW, pageH, cols, rows, trimW, trimH) {
   const colCount = Math.max(1, cols);
   const rowCount = Math.max(1, rows);
-  const outer = IMPOSITION_DEFAULT_OUTER_MARGIN_MM;
-  let cellW = Math.max(1, Number(trimW) || 1);
-  let cellH = Math.max(1, Number(trimH) || 1);
-  const maxW = Math.max(1, (pageW - 2 * outer) / colCount);
-  const maxH = Math.max(1, (pageH - 2 * outer) / rowCount);
-  const fit = Math.min(1, maxW / cellW, maxH / cellH);
-  cellW = Math.round(cellW * fit * 100) / 100;
-  cellH = Math.round(cellH * fit * 100) / 100;
-  const gapX = (pageW - colCount * cellW) / (colCount + 1);
-  const gapY = (pageH - rowCount * cellH) / (rowCount + 1);
-  const colX = [];
-  const rowY = [];
-  for (let c = 0; c < colCount; c += 1) {
-    colX.push(Math.round((gapX + c * (cellW + gapX)) * 100) / 100);
-  }
-  for (let r = 0; r < rowCount; r += 1) {
-    rowY.push(Math.round((gapY + r * (cellH + gapY)) * 100) / 100);
-  }
+  const fitted = fitImpositionCellMm(pageW, pageH, colCount, rowCount, trimW, trimH);
   return {
-    cellWidthMm: cellW,
-    cellHeightMm: cellH,
-    colXMM: colX,
-    rowYMM: rowY,
+    cellWidthMm: fitted.cellWidthMm,
+    cellHeightMm: fitted.cellHeightMm,
+    colXMM: impositionAxisPositionsMm(pageW, colCount, fitted.cellWidthMm, fitted.edgeMm),
+    rowYMM: impositionAxisPositionsMm(pageH, rowCount, fitted.cellHeightMm, fitted.edgeMm),
   };
 }
 
@@ -5421,6 +5681,8 @@ function buildDefaultImpositionPrintLayout(options = {}) {
   return normalizeImpositionPrintLayout({
     printPaperSize: paperSize,
     pdfScalePercent: options.pdfScalePercent ?? 100,
+    printOffsetXMM: options.printOffsetXMM,
+    printOffsetYMM: options.printOffsetYMM,
     frontColXMMText: listX,
     frontRowYMMText: listY,
     backColXMMText: listX,
@@ -5434,6 +5696,8 @@ function normalizeImpositionPrintLayout(raw, shape = null) {
   d.printPaperSize = normalizeImpositionPrintPaperSize(raw.printPaperSize);
   const s = Number(raw.pdfScalePercent);
   if (Number.isFinite(s)) d.pdfScalePercent = normalizeImpositionPdfScalePercent(s);
+  d.printOffsetXMM = normalizeImpositionPrintOffsetMm(raw.printOffsetXMM);
+  d.printOffsetYMM = normalizeImpositionPrintOffsetMm(raw.printOffsetYMM);
   const cols = shape?.cols || 0;
   const rows = shape?.rows || 0;
   d.frontColXMMText = normalizeImpositionPosListText(raw.frontColXMMText, cols);
@@ -5458,6 +5722,8 @@ function ensureImpositionPrintLayoutPositions(ip, options = {}) {
   const defaults = buildDefaultImpositionPrintLayout({
     printPaperSize: base.printPaperSize,
     pdfScalePercent: base.pdfScalePercent,
+    printOffsetXMM: base.printOffsetXMM,
+    printOffsetYMM: base.printOffsetYMM,
     use8up,
     horizontalTrim,
     trimText: getEffectiveTrimSizeText(state.meta),
@@ -5466,6 +5732,8 @@ function ensureImpositionPrintLayoutPositions(ip, options = {}) {
     ...defaults,
     printPaperSize: base.printPaperSize,
     pdfScalePercent: base.pdfScalePercent,
+    printOffsetXMM: base.printOffsetXMM,
+    printOffsetYMM: base.printOffsetYMM,
     frontColXMMText: hasFront ? base.frontColXMMText : defaults.frontColXMMText,
     frontRowYMMText: hasFront ? base.frontRowYMMText : defaults.frontRowYMMText,
     backColXMMText: hasBack ? base.backColXMMText : defaults.backColXMMText,
@@ -5476,13 +5744,10 @@ function ensureImpositionPrintLayoutPositions(ip, options = {}) {
 function resolveImpositionCellSizeMm(pageW, pageH, colXMM, rowYMM, trimW, trimH) {
   const cols = Math.max(1, colXMM.length);
   const rows = Math.max(1, rowYMM.length);
-  const outer = IMPOSITION_DEFAULT_OUTER_MARGIN_MM;
-  const maxW = Math.max(1, (pageW - 2 * outer) / cols);
-  const maxH = Math.max(1, (pageH - 2 * outer) / rows);
-  const fit = Math.min(1, maxW / Math.max(1, Number(trimW) || 1), maxH / Math.max(1, Number(trimH) || 1));
+  const fitted = fitImpositionCellMm(pageW, pageH, cols, rows, trimW, trimH);
   return {
-    cellWidthMm: Math.round((Number(trimW) || 1) * fit * 100) / 100,
-    cellHeightMm: Math.round((Number(trimH) || 1) * fit * 100) / 100,
+    cellWidthMm: fitted.cellWidthMm,
+    cellHeightMm: fitted.cellHeightMm,
   };
 }
 
@@ -5497,8 +5762,12 @@ function resolveImpositionSheetGeometry(ip, options = {}) {
   const rowText = sideKind === "back" ? layout.backRowYMMText : layout.frontRowYMMText;
   const colCount = Math.max(shape.cols, Number(options.colCount) || 0, 1);
   const rowCount = Math.max(shape.rows, Number(options.rowCount) || 0, 1);
-  const colXMM = parseImpositionPosMmList(colText, colCount);
-  const rowYMM = parseImpositionPosMmList(rowText, rowCount);
+  const offsetX = normalizeImpositionPrintOffsetMm(layout.printOffsetXMM);
+  const offsetY = normalizeImpositionPrintOffsetMm(layout.printOffsetYMM);
+  const colXMM = parseImpositionPosMmList(colText, colCount)
+    .map((mm) => roundImpositionMm(mm + offsetX));
+  const rowYMM = parseImpositionPosMmList(rowText, rowCount)
+    .map((mm) => roundImpositionMm(mm + offsetY));
   const trim = parseTrimSizeToMm(getEffectiveTrimSizeText(state.meta));
   const cell = resolveImpositionCellSizeMm(
     pageLayout.pageWidthMm,
@@ -5622,15 +5891,25 @@ function getImpositionPrintLayoutForCurrentMode(meta, use8up) {
     : normalizeImpositionPrintLayout(m.impositionPrint16Up, shape);
 }
 
-function parseImpositionPrintFileTokens(parts) {
+function parseImpositionPrintFileTokens(parts, meta = null) {
   const t = Array.isArray(parts) ? parts.map((x) => String(x ?? "").trim()) : [];
-  const shape8 = getImpositionGridShape(true, false);
-  const shape16 = getImpositionGridShape(false, false);
-  // 新形式: 8面(紙・拡大・表列・表行・裏列・裏行) + 16面(同) = 12トークン
+  // 横判は 2列×4行。縦判前提で切ると行Yが不足し下段ページが消える。
+  const horizontalTrim = isHorizontalTrimSize(meta?.trimSize);
+  const shape8 = getImpositionGridShape(true, horizontalTrim);
+  const shape16 = getImpositionGridShape(false, horizontalTrim);
+  // 新形式: 8面(紙・拡大・表列・表行・裏列・裏行) + 16面(同) = 12トークン。
+  // 続く2つは表裏共通の位置補正X・Y（無いファイルは 0）。
   if (t.length >= 12 && isImpositionPrintPaperSizeToken(t[0])) {
+    const printOffsetXMM = normalizeImpositionPrintOffsetMm(t.length >= 14 ? t[12] : 0);
+    const printOffsetYMM = normalizeImpositionPrintOffsetMm(t.length >= 14 ? t[13] : 0);
+    const withOffset = (layout) => ({
+      ...layout,
+      printOffsetXMM,
+      printOffsetYMM,
+    });
     return {
-      impositionPrint8Up: parseImpositionPrintDirectiveValues(t.slice(0, 6), shape8),
-      impositionPrint16Up: parseImpositionPrintDirectiveValues(t.slice(6, 12), shape16),
+      impositionPrint8Up: withOffset(parseImpositionPrintDirectiveValues(t.slice(0, 6), shape8)),
+      impositionPrint16Up: withOffset(parseImpositionPrintDirectiveValues(t.slice(6, 12), shape16)),
     };
   }
   if (t.length >= 6 && isImpositionPrintPaperSizeToken(t[0])) {
@@ -5665,7 +5944,9 @@ function formatImpositionPrintDirectiveLine(meta) {
     ip.backColXMMText || "-",
     ip.backRowYMMText || "-",
   ].join("\t");
-  return `//${headByCanon("imposition-print")}\t${pack(a)}\t${pack(b)}`;
+  const printOffsetXMM = normalizeImpositionPrintOffsetMm(b.printOffsetXMM ?? a.printOffsetXMM);
+  const printOffsetYMM = normalizeImpositionPrintOffsetMm(b.printOffsetYMM ?? a.printOffsetYMM);
+  return `//${headByCanon("imposition-print")}\t${pack(a)}\t${pack(b)}\t${printOffsetXMM}\t${printOffsetYMM}`;
 }
 
 function upsertImpositionPrintLine(text, meta) {
@@ -5736,9 +6017,20 @@ function hasImpositionPdfLoaded() {
   return Boolean(ip.spreadMode && (Number(ip.pageCount) || 0) > 0);
 }
 
-function resetImpositionPdfState() {
-  state.impositionPdf.fileName = "";
+function disposeImpositionPdfDoc() {
+  const doc = state.impositionPdf.doc;
   state.impositionPdf.doc = null;
+  if (doc && typeof doc.destroy === "function") {
+    try {
+      const done = doc.destroy();
+      if (done && typeof done.catch === "function") done.catch(() => {});
+    } catch (_e) {}
+  }
+}
+
+function resetImpositionPdfState() {
+  disposeImpositionPdfDoc();
+  state.impositionPdf.fileName = "";
   state.impositionPdf.pageCount = 0;
   state.impositionPdf.orientation = "";
   state.impositionPdf.imageByPageIndex = new Map();
@@ -5762,20 +6054,26 @@ function updateImpositionPdfName() {
 
 async function loadImpositionPdfFile(file) {
   try {
-    const pdfjs = await ensurePdfJsLoaded();
-    const buf = await file.arrayBuffer();
-    const task = pdfjs.getDocument({ data: buf });
-    const doc = await task.promise;
-    state.impositionPdf.fileName = file.name || "";
-    state.impositionPdf.doc = doc;
-    state.impositionPdf.pageCount = Number(doc.numPages) || 0;
-    state.impositionPdf.orientation = await detectPdfOrientation(doc);
-    state.impositionPdf.imageByPageIndex = new Map();
-    state.impositionPdf.spreadMode = false;
-    // 開き方向は PDF からは判定せず、台割テキストの //開き を常に使用する。
-    syncImpositionDialogInputsFromMeta();
-    updateImpositionPdfName();
-    await renderImpositionPreview();
+    await withImpositionProcessing(
+      LOCALE === "en" ? "Reading PDF…" : "PDFを読み込んでいます…",
+      async () => {
+        const pdfjs = await ensurePdfJsLoaded();
+        const buf = await file.arrayBuffer();
+        const task = pdfjs.getDocument({ data: buf });
+        const doc = await task.promise;
+        disposeImpositionPdfDoc();
+        state.impositionPdf.fileName = file.name || "";
+        state.impositionPdf.doc = doc;
+        state.impositionPdf.pageCount = Number(doc.numPages) || 0;
+        state.impositionPdf.orientation = await detectPdfOrientation(doc);
+        state.impositionPdf.imageByPageIndex = new Map();
+        state.impositionPdf.spreadMode = false;
+        // 開き方向は PDF からは判定せず、台割テキストの //開き を常に使用する。
+        syncImpositionDialogInputsFromMeta();
+        updateImpositionPdfName();
+        await renderImpositionPreview();
+      },
+    );
   } catch (error) {
     resetImpositionPdfState();
     updateImpositionPdfName();
@@ -5787,24 +6085,54 @@ async function loadImpositionPdfFile(file) {
   }
 }
 
-async function renderPdfSpreadPageToCanvas(doc, pdfPageIndex) {
-  const page = await doc.getPage(pdfPageIndex);
-  const baseViewport = page.getViewport({ scale: 1 });
-  const targetWidthPx = 680;
-  const scale = targetWidthPx / Math.max(1, baseViewport.width);
-  const viewport = page.getViewport({ scale });
+function capViewportScale(baseViewport, scale) {
+  const raw = Number(scale);
+  const safe = Number.isFinite(raw) && raw > 0 ? raw : 1;
+  const longPt = Math.max(1, Number(baseViewport?.width) || 1, Number(baseViewport?.height) || 1);
+  if (longPt * safe <= IMPOSITION_PDF_MAX_CANVAS_EDGE_PX) return safe;
+  return IMPOSITION_PDF_MAX_CANVAS_EDGE_PX / longPt;
+}
+
+function scaleToCoverViewport(baseViewport, destWidthPx, destHeightPx, supersample = 1) {
+  const w = Math.max(1, Number(baseViewport?.width) || 1);
+  const h = Math.max(1, Number(baseViewport?.height) || 1);
+  const cover = Math.max(Math.max(1, destWidthPx) / w, Math.max(1, destHeightPx) / h);
+  const extra = Number.isFinite(supersample) && supersample > 0 ? supersample : 1;
+  return capViewportScale(baseViewport, cover * extra);
+}
+
+async function renderPdfPageWithScale(page, scale) {
+  const viewport = page.getViewport({ scale: Math.max(0.05, Number(scale) || 1) });
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.floor(viewport.width));
   canvas.height = Math.max(1, Math.floor(viewport.height));
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) return null;
+  sharpenCanvasSmoothing(ctx);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: ctx, viewport }).promise;
   return canvas;
 }
 
-function cropSpreadCanvasHalf(sourceCanvas, side) {
+async function renderPdfSpreadPageToCanvas(doc, pdfPageIndex, renderOptions = {}) {
+  const page = await doc.getPage(pdfPageIndex);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = renderOptions.forPrint
+    ? scaleToCoverViewport(
+      baseViewport,
+      renderOptions.destWidthPx,
+      renderOptions.destHeightPx,
+      IMPOSITION_PDF_PRINT_SUPERSAMPLE,
+    )
+    : capViewportScale(
+      baseViewport,
+      (IMPOSITION_PDF_PREVIEW_PAGE_WIDTH_PX * 2) / Math.max(1, baseViewport.width),
+    );
+  return renderPdfPageWithScale(page, scale);
+}
+
+function cropSpreadCanvasHalf(sourceCanvas, side, quality = IMPOSITION_PDF_JPEG_QUALITY_PREVIEW) {
   const halfW = Math.max(1, Math.floor(sourceCanvas.width / 2));
   const fullH = sourceCanvas.height;
   const out = document.createElement("canvas");
@@ -5813,74 +6141,91 @@ function cropSpreadCanvasHalf(sourceCanvas, side) {
   const ctx = out.getContext("2d");
   if (!ctx) return "";
   const sx = side === "left" ? 0 : halfW;
+  sharpenCanvasSmoothing(ctx);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, halfW, fullH);
   ctx.drawImage(sourceCanvas, sx, 0, halfW, fullH, 0, 0, halfW, fullH);
-  return out.toDataURL("image/jpeg", 0.92);
+  const q = Number(quality);
+  return out.toDataURL("image/jpeg", Number.isFinite(q) ? q : IMPOSITION_PDF_JPEG_QUALITY_PREVIEW);
+}
+
+function forEachSpreadHalf(numPdfPages, opening, visit) {
+  const isRightOpening = String(opening || "left").toLowerCase() === "right";
+  const total = Math.max(0, Number(numPdfPages) || 0);
+  let logicalPage = 0;
+  for (let pdfIdx = 1; pdfIdx <= total; pdfIdx += 1) {
+    const isFirst = pdfIdx === 1;
+    const isLast = pdfIdx === total;
+    const append = (side) => {
+      logicalPage += 1;
+      visit({ logicalPage, pdfIdx, side });
+    };
+    if (isRightOpening) {
+      if (isFirst) append("left");
+      else if (isLast) append("right");
+      else {
+        append("right");
+        append("left");
+      }
+    } else if (isFirst) append("right");
+    else if (isLast) append("left");
+    else {
+      append("left");
+      append("right");
+    }
+  }
+  return logicalPage;
 }
 
 async function buildImpositionSpreadPdfImages(doc, opening = "left") {
-  const isRightOpening = String(opening || "left").toLowerCase() === "right";
   const numPdfPages = Number(doc?.numPages) || 0;
   const images = new Map();
   if (numPdfPages <= 0) return { images, pageCount: 0 };
-
-  let logicalPage = 0;
-  for (let pdfIdx = 1; pdfIdx <= numPdfPages; pdfIdx += 1) {
-    const canvas = await renderPdfSpreadPageToCanvas(doc, pdfIdx);
-    if (!canvas) continue;
-    const isFirst = pdfIdx === 1;
-    const isLast = pdfIdx === numPdfPages;
-
-    const appendHalf = (side) => {
-      const image = cropSpreadCanvasHalf(canvas, side);
-      if (!image) return;
-      logicalPage += 1;
-      images.set(logicalPage, image);
-    };
-
-    if (isRightOpening) {
-      if (isFirst) {
-        appendHalf("left");
-      } else if (isLast) {
-        appendHalf("right");
-      } else {
-        appendHalf("right");
-        appendHalf("left");
-      }
-    } else if (isFirst) {
-      appendHalf("right");
-    } else if (isLast) {
-      appendHalf("left");
-    } else {
-      appendHalf("left");
-      appendHalf("right");
+  const halves = [];
+  const pageCount = forEachSpreadHalf(numPdfPages, opening, (half) => {
+    halves.push(half);
+  });
+  let currentPdfIdx = 0;
+  let canvas = null;
+  for (const half of halves) {
+    if (half.pdfIdx !== currentPdfIdx || !canvas) {
+      canvas = await renderPdfSpreadPageToCanvas(doc, half.pdfIdx);
+      currentPdfIdx = half.pdfIdx;
     }
+    if (!canvas) continue;
+    const image = cropSpreadCanvasHalf(canvas, half.side, IMPOSITION_PDF_JPEG_QUALITY_PREVIEW);
+    if (!image) continue;
+    images.set(half.logicalPage, image);
   }
-
-  return { images, pageCount: logicalPage };
+  return { images, pageCount };
 }
 
 async function loadImpositionSpreadPdfFile(file) {
   try {
-    const pdfjs = await ensurePdfJsLoaded();
-    const buf = await file.arrayBuffer();
-    const task = pdfjs.getDocument({ data: buf });
-    const doc = await task.promise;
-    const opening = String(state.meta?.opening || "left").toLowerCase() === "right" ? "right" : "left";
-    const { images, pageCount } = await buildImpositionSpreadPdfImages(doc, opening);
-    if (pageCount <= 0) {
-      throw new Error(LOCALE === "en" ? "No pages found in the PDF." : "PDFにページがありません。");
-    }
-    state.impositionPdf.fileName = file.name || "";
-    state.impositionPdf.doc = null;
-    state.impositionPdf.pageCount = pageCount;
-    state.impositionPdf.orientation = isHorizontalTrimSize(state.meta?.trimSize) ? "landscape" : "portrait";
-    state.impositionPdf.imageByPageIndex = images;
-    state.impositionPdf.spreadMode = true;
-    syncImpositionDialogInputsFromMeta();
-    updateImpositionPdfName();
-    await renderImpositionPreview();
+    await withImpositionProcessing(
+      LOCALE === "en" ? "Reading spread PDF…" : "見開きPDFを読み込んでいます…",
+      async () => {
+        const pdfjs = await ensurePdfJsLoaded();
+        const buf = await file.arrayBuffer();
+        const task = pdfjs.getDocument({ data: buf });
+        const doc = await task.promise;
+        const opening = String(state.meta?.opening || "left").toLowerCase() === "right" ? "right" : "left";
+        disposeImpositionPdfDoc();
+        state.impositionPdf.doc = doc;
+        const { images, pageCount } = await buildImpositionSpreadPdfImages(doc, opening);
+        if (pageCount <= 0) {
+          throw new Error(LOCALE === "en" ? "No pages found in the PDF." : "PDFにページがありません。");
+        }
+        state.impositionPdf.fileName = file.name || "";
+        state.impositionPdf.pageCount = pageCount;
+        state.impositionPdf.orientation = isHorizontalTrimSize(state.meta?.trimSize) ? "landscape" : "portrait";
+        state.impositionPdf.imageByPageIndex = images;
+        state.impositionPdf.spreadMode = true;
+        syncImpositionDialogInputsFromMeta();
+        updateImpositionPdfName();
+        await renderImpositionPreview();
+      },
+    );
   } catch (error) {
     resetImpositionPdfState();
     updateImpositionPdfName();
@@ -5942,16 +6287,13 @@ async function renderPdfPageToDataUrl(pageIndex) {
   if (!doc || pageIndex < 1 || pageIndex > pageCount) return "";
   const page = await doc.getPage(pageIndex);
   const baseViewport = page.getViewport({ scale: 1 });
-  const targetWidthPx = 680;
-  const scale = targetWidthPx / Math.max(1, baseViewport.width);
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.floor(viewport.width));
-  canvas.height = Math.max(1, Math.floor(viewport.height));
-  const ctx = canvas.getContext("2d", { alpha: false });
-  if (!ctx) return "";
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  const scale = capViewportScale(
+    baseViewport,
+    IMPOSITION_PDF_PREVIEW_PAGE_WIDTH_PX / Math.max(1, baseViewport.width),
+  );
+  const canvas = await renderPdfPageWithScale(page, scale);
+  if (!canvas) return "";
+  const dataUrl = canvas.toDataURL("image/jpeg", IMPOSITION_PDF_JPEG_QUALITY_PREVIEW);
   if (cache instanceof Map) cache.set(pageIndex, dataUrl);
   return dataUrl;
 }
@@ -6098,6 +6440,14 @@ function loadHtmlImageFromSrc(src) {
   });
 }
 
+function sharpenCanvasSmoothing(ctx) {
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = true;
+  try {
+    ctx.imageSmoothingQuality = "high";
+  } catch (_e) {}
+}
+
 function drawContainedImage(ctx, img, x, y, w, h, scaleFactor = 1) {
   if (!img || w <= 0 || h <= 0) return;
   const iw = Math.max(1, img.naturalWidth || img.width || 1);
@@ -6108,6 +6458,7 @@ function drawContainedImage(ctx, img, x, y, w, h, scaleFactor = 1) {
   const dx = x + (w - drawW) / 2;
   const dy = y + (h - drawH) / 2;
   ctx.save();
+  sharpenCanvasSmoothing(ctx);
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
@@ -6119,6 +6470,7 @@ function drawContainedImage(ctx, img, x, y, w, h, scaleFactor = 1) {
 function drawFilledImage(ctx, img, x, y, w, h) {
   if (!img || w <= 0 || h <= 0) return;
   ctx.save();
+  sharpenCanvasSmoothing(ctx);
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
@@ -6167,14 +6519,27 @@ function drawImpositionFolioOnCanvas(ctx, pageNo, x, y, w, h) {
   ctx.restore();
 }
 
-function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx, cellW, cellH, rowCount, lineOnly = false, gacha = null) {
+function drawImpositionSpineMarkOnCanvas(
+  ctx,
+  placement,
+  foldNo,
+  colXPx,
+  rowYPx,
+  cellW,
+  cellH,
+  rowCount,
+  lineOnly = false,
+  gacha = null,
+  options = {},
+) {
   if (!placement) return;
   if (!lineOnly && !Number.isFinite(Number(foldNo))) return;
+  const omitFoldNo = !lineOnly && shouldOmitImpositionSpineFoldNumber(foldNo, options);
   const titleShort = getImpositionSpineTitleShort(state.meta);
-  const label = `${titleShort} 《${foldNo}》`;
+  const label = omitFoldNo ? String(titleShort || "") : `${titleShort} 《${foldNo}》`;
   const fontSize = Math.max(8, Math.min(cellW, cellH) * 0.035);
   ctx.save();
-  ctx.strokeStyle = "rgba(30,30,30,0.45)";
+  ctx.strokeStyle = "rgba(30,30,30,0.9)";
   ctx.fillStyle = "#1a1a1a";
   ctx.lineWidth = Math.max(1, mmToPxForImpositionPrint(0.18));
   ctx.font = `bold ${fontSize}px "Yu Gothic UI", Meiryo, sans-serif`;
@@ -6194,7 +6559,7 @@ function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx,
     const topY = Number(rowYPx[row]) || 0;
     const bottomY = topY + cellH;
     const midY = (topY + bottomY) / 2;
-    if (lineOnly) {
+    if (lineOnly || !label) {
       ctx.beginPath();
       if (gacha && !gacha.error) {
         const gapPx = mmToPxForImpositionPrint(GACHA_SPINE_CUT_GAP_MM);
@@ -6210,6 +6575,7 @@ function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx,
       }
       ctx.stroke();
     } else {
+      // 《1》省略時はラベルが短くなる分、グレー線の切れ目も狭まり延長される
       const halfGap = Math.max(8, fontSize * String(label).length * 0.55);
       ctx.beginPath();
       ctx.moveTo(lineX, topY);
@@ -6232,7 +6598,7 @@ function drawImpositionSpineMarkOnCanvas(ctx, placement, foldNo, colXPx, rowYPx,
     const leftX = Number(colXPx[c]) || 0;
     const rightX = leftX + cellW;
     const midX = (leftX + rightX) / 2;
-    if (lineOnly) {
+    if (lineOnly || !label) {
       ctx.beginPath();
       ctx.moveTo(leftX, lineY);
       ctx.lineTo(rightX, lineY);
@@ -6260,6 +6626,7 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip, renderMod
   canvas.height = pageHpx;
   const ctx = canvas.getContext("2d", { alpha: annotationsOnly });
   if (!ctx) throw new Error(LOCALE === "en" ? "Canvas unavailable." : "Canvas を利用できません。");
+  sharpenCanvasSmoothing(ctx);
   if (!annotationsOnly) {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, pageWpx, pageHpx);
@@ -6403,6 +6770,9 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip, renderMod
         rowCount,
         spineLineOnly,
         gacha,
+        {
+          saddleStitch: Boolean(sheet?.saddleStitch) || Boolean(state.impositionOptions.saddleStitch),
+        },
       );
     }
     if (gacha) {
@@ -6412,6 +6782,10 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip, renderMod
         spineFixedNo: foldNo,
       });
     }
+    const showPositionMarks = sheet?.showPositionMarks != null
+      ? Boolean(sheet.showPositionMarks)
+      : Boolean(state.impositionOptions.showPositionMarks);
+    if (showPositionMarks) drawImpositionFoldEdgeMarksOnCanvas(targetCtx, geometry);
   };
 
   if (sheet.rotateWhole) {
@@ -6420,6 +6794,7 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip, renderMod
     layer.height = pageHpx;
     const layerCtx = layer.getContext("2d", { alpha: annotationsOnly });
     if (!layerCtx) throw new Error(LOCALE === "en" ? "Canvas unavailable." : "Canvas を利用できません。");
+    sharpenCanvasSmoothing(layerCtx);
     if (!annotationsOnly) {
       layerCtx.fillStyle = "#ffffff";
       layerCtx.fillRect(0, 0, pageWpx, pageHpx);
@@ -6438,13 +6813,112 @@ async function renderImpositionSheetToJpegBytes(sheet, pageLayout, ip, renderMod
     const parsed = dataUrlToBytes(dataUrl);
     return parsed ? parsed.bytes : null;
   }
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.93);
+  const dataUrl = canvas.toDataURL("image/jpeg", IMPOSITION_PDF_JPEG_QUALITY_PRINT);
   const parsed = dataUrlToBytes(dataUrl);
   if (!parsed) throw new Error(LOCALE === "en" ? "Failed to encode sheet image." : "シート画像のエンコードに失敗しました。");
   return parsed.bytes;
 }
 
+function maxImpositionPdfSlotPx(sheets, ip) {
+  const userScale = (normalizeImpositionPdfScalePercent(ip?.pdfScalePercent) || 100) / 100;
+  let widthPx = 64;
+  let heightPx = 64;
+  for (const sheet of sheets || []) {
+    const rows = Array.isArray(sheet?.rows) ? sheet.rows : [];
+    const rowCount = Math.max(1, rows.length);
+    const colCount = Math.max(1, ...rows.map((row) => (Array.isArray(row) ? row.length : 0)), 1);
+    const geometry = resolveImpositionSheetGeometry(ip, {
+      use8up: sheet?.use8up != null ? Boolean(sheet.use8up) : Boolean(state.impositionOptions.use8up),
+      useGachaBook: Boolean(sheet?.useGachaBook),
+      horizontalTrim: Boolean(sheet?.horizontalTrim),
+      colCount,
+      rowCount,
+      sideKind: String(sheet?.sideKind || "front"),
+    });
+    const w = mmToPxForImpositionPrint(geometry.cellWidthMm) * userScale;
+    const h = mmToPxForImpositionPrint(geometry.cellHeightMm) * userScale;
+    if (w > widthPx) widthPx = w;
+    if (h > heightPx) heightPx = h;
+  }
+  return { widthPx, heightPx };
+}
+
+async function buildPrintResolutionPdfImageMap(needed, slotPx) {
+  const doc = state.impositionPdf.doc;
+  const out = new Map();
+  if (!doc || !(needed instanceof Set) || needed.size === 0) return out;
+  if (state.impositionPdf.spreadMode) {
+    const opening = String(state.meta?.opening || "left").toLowerCase() === "right" ? "right" : "left";
+    const halves = [];
+    forEachSpreadHalf(Number(doc.numPages) || 0, opening, (half) => {
+      if (needed.has(half.logicalPage)) halves.push(half);
+    });
+    let currentPdfIdx = 0;
+    let canvas = null;
+    for (const half of halves) {
+      if (half.pdfIdx !== currentPdfIdx || !canvas) {
+        try {
+          canvas = await renderPdfSpreadPageToCanvas(doc, half.pdfIdx, {
+            forPrint: true,
+            destWidthPx: slotPx.widthPx * 2,
+            destHeightPx: slotPx.heightPx,
+          });
+        } catch (_e) {
+          canvas = null;
+        }
+        currentPdfIdx = half.pdfIdx;
+      }
+      if (!canvas) continue;
+      const image = cropSpreadCanvasHalf(canvas, half.side, IMPOSITION_PDF_JPEG_QUALITY_PRINT);
+      if (image) out.set(half.logicalPage, image);
+    }
+    return out;
+  }
+  for (const idx of needed) {
+    try {
+      const page = await doc.getPage(idx);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = scaleToCoverViewport(
+        baseViewport,
+        slotPx.widthPx,
+        slotPx.heightPx,
+        IMPOSITION_PDF_PRINT_SUPERSAMPLE,
+      );
+      const canvas = await renderPdfPageWithScale(page, scale);
+      if (!canvas) continue;
+      const image = canvas.toDataURL("image/jpeg", IMPOSITION_PDF_JPEG_QUALITY_PRINT);
+      if (image) out.set(idx, image);
+    } catch (_e) {}
+  }
+  return out;
+}
+
+async function applyPrintResolutionPdfImages(sheets, ip) {
+  if (!state.impositionPdf.doc) return;
+  const needed = new Set();
+  for (const sheet of sheets || []) {
+    for (const row of sheet?.rows || []) {
+      for (const slot of row || []) {
+        const idx = Number(slot?.sourcePageIndex) || 0;
+        if (idx > 0 && slot?.pdfImage) needed.add(idx);
+      }
+    }
+  }
+  if (needed.size === 0) return;
+  const hiRes = await buildPrintResolutionPdfImageMap(needed, maxImpositionPdfSlotPx(sheets, ip));
+  for (const sheet of sheets || []) {
+    for (const row of sheet?.rows || []) {
+      for (const slot of row || []) {
+        if (!slot) continue;
+        const image = hiRes.get(Number(slot.sourcePageIndex) || 0);
+        if (image) slot.pdfImage = image;
+      }
+    }
+  }
+}
+
 async function buildImpositionPrintPdfBlob(sheets, pageLayout, ip) {
+  await applyPrintResolutionPdfImages(sheets, ip);
   const PDFLib = await ensurePdfLibLoaded();
   const pdfDoc = await PDFLib.PDFDocument.create();
   const pageWidthPt = pageLayout.pageWidthMm * IMPOSITION_MM_TO_PT;
@@ -10529,7 +11003,7 @@ function parseText(text) {
       meta.articleListColumnWidths = parseArticleListColumnWidths(tokens.slice(1));
     }
     else if (headCanon === "imposition-print") {
-      const pack = parseImpositionPrintFileTokens(tokens.slice(1));
+      const pack = parseImpositionPrintFileTokens(tokens.slice(1), meta);
       meta.impositionPrint8Up = pack.impositionPrint8Up;
       meta.impositionPrint16Up = pack.impositionPrint16Up;
     }
@@ -11057,8 +11531,16 @@ function loadFromText(text) {
   const parsed = parseText(text);
   inheritPeople(parsed.entries);
   state.meta = parsed.meta;
-  state.meta.impositionPrint8Up = normalizeImpositionPrintLayout(state.meta.impositionPrint8Up);
-  state.meta.impositionPrint16Up = normalizeImpositionPrintLayout(state.meta.impositionPrint16Up);
+  const horizontalTrim = isHorizontalTrimSize(state.meta?.trimSize);
+  // 判型（縦/横）確定後に面付け座標を正規化・不足分はデフォルトで埋める
+  state.meta.impositionPrint8Up = ensureImpositionPrintLayoutPositions(
+    state.meta.impositionPrint8Up,
+    { use8up: true, horizontalTrim },
+  );
+  state.meta.impositionPrint16Up = ensureImpositionPrintLayoutPositions(
+    state.meta.impositionPrint16Up,
+    { use8up: false, horizontalTrim },
+  );
   state.impositionOptions.pdfScalePercent = getImpositionPrintLayoutForCurrentMode(
     state.meta,
     state.impositionOptions.use8up,
@@ -11121,6 +11603,11 @@ function buildMetaSummaryText() {
 }
 
 async function initRemoteSync() {
+  // ローカル起動時は同期しない（案内は init 側で一度出す）
+  if (!isHostedRuntime()) {
+    remoteSyncState.enabled = false;
+    return;
+  }
   if (!remoteSyncState.enabled) return;
   updateRemoteSyncStatus(
     LOCALE === "en"
